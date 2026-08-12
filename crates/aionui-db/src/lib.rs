@@ -26,11 +26,11 @@ pub use instance_lock::{DataDirInstanceGuard, instance_lock_path};
 pub use models::{
     AgentMetadataRow, AssistantDefinitionRow, AssistantOverlayRow, AssistantOverrideRow, AssistantPreferenceRow,
     AssistantRow, ConversationArtifactRow, ConversationAssistantSnapshotRow, CreateAssistantParams,
-    ExternalUserProjection, FolderRow, ProjectExplorerRow, ProjectKind, ProjectRow, Role, SkillImportRecordRow,
-    SkillRow, UpdateAgentAvailabilitySnapshotParams, UpdateAgentHandshakeParams, UpdateAssistantParams,
-    UpsertAgentMetadataParams, UpsertAssistantDefinitionParams, UpsertAssistantOverlayParams,
-    UpsertAssistantPreferenceParams, UpsertConversationAssistantSnapshotParams, UpsertOverrideParams, UserStatus,
-    UserType,
+    ExternalUserProjection, FolderRow, NoteRow, NoteTagRow, NotebookRow, ProjectExplorerRow, ProjectKind, ProjectRow,
+    Role, SkillImportRecordRow, SkillRow, TagRow, TagWithCountRow, UpdateAgentAvailabilitySnapshotParams,
+    UpdateAgentHandshakeParams, UpdateAssistantParams, UpsertAgentMetadataParams, UpsertAssistantDefinitionParams,
+    UpsertAssistantOverlayParams, UpsertAssistantPreferenceParams, UpsertConversationAssistantSnapshotParams,
+    UpsertOverrideParams, UserStatus, UserType,
 };
 pub use repository::channel::UpdatePluginStatusParams;
 pub use repository::conversation::{
@@ -52,15 +52,17 @@ pub use repository::{
     IAgentMetadataRepository, IAssistantDefinitionRepository, IAssistantOverlayRepository,
     IAssistantOverrideRepository, IAssistantPreferenceRepository, IAssistantRepository, IChannelRepository,
     IClientPreferenceRepository, IConversationRepository, ICronRepository, IFeedbackDiagnosticsRepository,
-    IMcpServerRepository, IOAuthTokenRepository, IProjectStore, IProviderRepository, IRemoteAgentRepository,
-    ISettingsRepository, ISkillRepository, ITeamRepository, IUserRepository, PageDirection, PersistedSessionState,
+    IMcpServerRepository, INoteRepository, INotebookRepository, IOAuthTokenRepository, IProjectStore,
+    IProviderRepository, IRemoteAgentRepository, ISettingsRepository, ISkillRepository, ITagRepository,
+    ITeamRepository, IUserRepository, ListNotesFilter, PageDirection, PersistedSessionState,
     SaveRuntimeStateParams, SqliteAcpSessionRepository, SqliteAgentMetadataRepository,
     SqliteAssistantDefinitionRepository, SqliteAssistantOverlayRepository, SqliteAssistantOverrideRepository,
     SqliteAssistantPreferenceRepository, SqliteAssistantRepository, SqliteChannelRepository,
     SqliteClientPreferenceRepository, SqliteConversationRepository, SqliteCronRepository,
-    SqliteFeedbackDiagnosticsRepository, SqliteMcpServerRepository, SqliteOAuthTokenRepository, SqliteProjectStore,
-    SqliteProviderRepository, SqliteRemoteAgentRepository, SqliteSettingsRepository, SqliteSkillRepository,
-    SqliteTeamRepository, SqliteUserRepository,
+    SqliteFeedbackDiagnosticsRepository, SqliteMcpServerRepository, SqliteNoteRepository, SqliteNotebookRepository,
+    SqliteOAuthTokenRepository, SqliteProjectStore, SqliteProviderRepository, SqliteRemoteAgentRepository,
+    SqliteSettingsRepository, SqliteSkillRepository, SqliteTagRepository, SqliteTeamRepository, SqliteUserRepository,
+    UpdateNoteParams, UpdateNotebookParams,
 };
 
 // Re-export sqlx pool type for downstream crates

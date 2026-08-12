@@ -40,6 +40,7 @@ aionui-project.workspace = true
 aionui-assistant.workspace = true
 aionui-runtime.workspace = true
 aionui-process.workspace = true
+aionui-notebook.workspace = true
 aion-config.workspace = true
 axum.workspace = true
 chrono.workspace = true

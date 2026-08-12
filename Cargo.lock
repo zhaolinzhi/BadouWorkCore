@@ -412,6 +412,7 @@ dependencies = [
  "aionui-extension",
  "aionui-file",
  "aionui-mcp",
+ "aionui-notebook",
  "aionui-office",
  "aionui-process",
  "aionui-project",
@@ -734,6 +735,27 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "aionui-notebook"
+version = "0.1.63"
+dependencies = [
+ "aionui-api-types",
+ "aionui-auth",
+ "aionui-common",
+ "aionui-db",
+ "async-trait",
+ "axum",
+ "dirs",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tower",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

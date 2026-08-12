@@ -32,6 +32,7 @@ use aionui_cron::cron_routes;
 use aionui_extension::{extension_routes, hub_routes, skill_routes};
 use aionui_file::file_routes;
 use aionui_mcp::mcp_routes;
+use aionui_notebook::notebook_routes;
 use aionui_office::{office_proxy_routes, office_routes};
 use aionui_project::project_routes;
 use aionui_realtime::{NoopMessageRouter, WsHandlerState, ws_upgrade_handler};
@@ -327,6 +328,11 @@ pub fn create_router_with_all_state(services: &AppServices, states: ModuleStates
     let assistant_authenticated =
         assistant_routes(states.assistant).route_layer(from_fn_with_state(auth_mw_state.clone(), auth_middleware));
 
+    // Notebook routes protected by auth middleware (mirrors the aioncore
+    // notebook wiring carried over from the notebook-feature migration).
+    let notebook_authenticated =
+        notebook_routes(states.notebook).route_layer(from_fn_with_state(auth_mw_state.clone(), auth_middleware));
+
     // Office proxy routes serve iframe content but still require auth so
     // preview ports remain scoped to the active Core user.
     let office_proxy =
@@ -373,7 +379,8 @@ pub fn create_router_with_all_state(services: &AppServices, states: ModuleStates
         .merge(cron_authenticated)
         .merge(office_authenticated)
         .merge(shell_authenticated)
-        .merge(assistant_authenticated);
+        .merge(assistant_authenticated)
+        .merge(notebook_authenticated);
 
     // Conditionally merge WeChat login SSE route (feature-gated)
     #[cfg(feature = "weixin")]

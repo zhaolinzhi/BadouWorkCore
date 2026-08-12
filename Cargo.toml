@@ -25,6 +25,7 @@ members = [
     "crates/aionui-cron",
     "crates/aionui-assistant",
     "crates/aionui-app",
+    "crates/aionui-notebook",
 ]
 
 [workspace.package]
@@ -58,6 +59,7 @@ aionui-project = { path = "crates/aionui-project" }
 aionui-cron = { path = "crates/aionui-cron" }
 aionui-assistant = { path = "crates/aionui-assistant" }
 aionui-app = { path = "crates/aionui-app" }
+aionui-notebook = { path = "crates/aionui-notebook" }
 
 aion-agent = { git = "https://github.com/iOfficeAI/aionrs.git", tag = "v0.2.10" }
 aion-providers = { git = "https://github.com/iOfficeAI/aionrs.git", tag = "v0.2.10" }

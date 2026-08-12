@@ -33,6 +33,9 @@ use aionui_mcp::{
     AionrsAdapter, AionuiAdapter, ClaudeAdapter, CodeBuddyAdapter, CodexAdapter, GeminiAdapter, McpAgentAdapter,
     McpConfigService, McpConnectionTestService, McpRouterState, McpSyncService, OpencodeAdapter, QwenAdapter,
 };
+use aionui_notebook::{
+    file_store::MdFileStore, service::NotebookService, state::NotebookRouterState, workspace::WorkspaceConfig,
+};
 use aionui_office::{ConversionService, OfficeRouterState, OfficecliWatchManager, ProxyService};
 use aionui_project::ProjectRouterState;
 use aionui_realtime::{MessageRouter, TokenUserResolver, WsHandlerState};
@@ -139,6 +142,7 @@ pub struct ModuleStates {
     pub office: OfficeRouterState,
     pub shell: ShellRouterState,
     pub assistant: AssistantRouterState,
+    pub notebook: NotebookRouterState,
 }
 
 fn default_allowed_roots(work_dir: Option<&std::path::Path>) -> Vec<std::path::PathBuf> {
@@ -326,6 +330,7 @@ pub async fn build_module_states(
         office: build_module_state_phase(&boot, "office", || build_office_state(services)),
         shell: build_module_state_phase(&boot, "shell", || build_shell_state(services)),
         assistant,
+        notebook: build_module_state_phase(&boot, "notebook", || build_notebook_state(services)),
     };
     tracing::info!(
         elapsed_ms = boot.elapsed().as_millis(),
@@ -888,6 +893,32 @@ pub fn build_shell_state(services: &AppServices) -> ShellRouterState {
         ))),
         stt_service: Arc::new(aionui_shell::SttService::new(reqwest::Client::new())),
         client_pref_service,
+    }
+}
+
+pub fn build_notebook_state(services: &AppServices) -> NotebookRouterState {
+    let workspace_root = services.data_dir.join("notebooks");
+    let workspace = Arc::new(
+        WorkspaceConfig::resolve(&workspace_root).expect("notebook workspace must initialize under data_dir"),
+    );
+    let file_store = Arc::new(MdFileStore::new(workspace.notes_dir.clone()));
+    let pool = services.database.pool().clone();
+    let notebook_repo: Arc<dyn aionui_db::INotebookRepository> =
+        Arc::new(aionui_db::SqliteNotebookRepository::new(pool.clone()));
+    let note_repo: Arc<dyn aionui_db::INoteRepository> = Arc::new(aionui_db::SqliteNoteRepository::new(pool.clone()));
+    let tag_repo: Arc<dyn aionui_db::ITagRepository> = Arc::new(aionui_db::SqliteTagRepository::new(pool.clone()));
+    let service = Arc::new(NotebookService::new(
+        notebook_repo,
+        note_repo,
+        tag_repo,
+        (*file_store).clone(),
+        (*workspace).clone(),
+        pool,
+    ));
+    NotebookRouterState {
+        service,
+        workspace,
+        file_store,
     }
 }
 

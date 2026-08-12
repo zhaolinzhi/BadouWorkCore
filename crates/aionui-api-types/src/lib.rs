@@ -21,6 +21,7 @@ mod extension;
 mod file;
 mod lifecycle;
 mod mcp;
+mod notebook;
 mod office;
 mod project;
 mod provider;
@@ -126,6 +127,10 @@ pub use mcp::{
     ImportMcpServerRequest, McpAuthMethod, McpConnectionTestErrorCode, McpConnectionTestResult, McpServerResponse,
     McpToolResponse, McpTransport, OAuthCheckStatusRequest, OAuthLoginRequest, OAuthLoginResponse, OAuthLogoutRequest,
     OAuthStatusResponse, TestMcpConnectionRequest, UpdateMcpServerRequest,
+};
+pub use notebook::{
+    CreateNoteRequest, CreateNotebookRequest, ListNotesQuery, NoteResponse, NotebookResponse, RawNoteResponse,
+    StarToggleResponse, TagResponse, TagsListResponse, UpdateNoteRequest, UpdateNotebookRequest,
 };
 pub use office::{
     CellCoord, CellRange, ConversionResultDto, ConversionTarget, DocumentConversionRequest, DocumentConversionResponse,
