@@ -97,6 +97,14 @@ pub struct AttachInput {
     pub display_name: Option<String>,
 }
 
+/// Body of `PUT /api/projects/{project_id}/binding`. Built from the wire DTO
+/// by the route handler; service code never sees serde types.
+#[derive(Debug, Clone)]
+pub struct UpsertBindingInput {
+    pub assistant_id: String,
+    pub folder_path: String,
+}
+
 /// Resolve a `pe_id + relative_path` reference to a concrete resource.
 #[derive(Debug, Clone)]
 pub struct ReferenceInput {
@@ -179,6 +187,9 @@ pub enum ProjectError {
     #[error("attached file does not exist: {path}")]
     ChatFileMissing { path: String },
 
+    #[error("binding input invalid: {field}")]
+    BindingInvalidInput { field: String },
+
     #[error("local file path is not a readable file: {path}")]
     LocalPathNotReadable { path: String },
 
@@ -208,6 +219,7 @@ impl ProjectError {
             ProjectError::UnsupportedResourceScheme { .. } => "unsupported_resource_scheme",
             ProjectError::UploadPathOutsideRoot { .. } => "upload_path_outside_root",
             ProjectError::ChatFileMissing { .. } => "chat_file_missing",
+            ProjectError::BindingInvalidInput { .. } => "binding_invalid_input",
             ProjectError::LocalPathNotReadable { .. } => "local_path_not_readable",
             ProjectError::Database(_) => "internal_db_error",
         }

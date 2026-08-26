@@ -233,6 +233,11 @@ impl From<ProjectError> for ApiError {
                 "chat_file_missing",
                 Some(json!({ "path": path })),
             ),
+            ProjectError::BindingInvalidInput { field } => (
+                StatusCode::BAD_REQUEST,
+                "binding_invalid_input",
+                Some(json!({ "field": field })),
+            ),
             ProjectError::LocalPathNotReadable { path } => (
                 StatusCode::BAD_REQUEST,
                 "local_path_not_readable",
