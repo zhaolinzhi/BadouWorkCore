@@ -20,6 +20,7 @@ impl SqliteProjectStore {
 const FOLDER_COLS: &str = "folder_id, resource_uri, resource_canonical, created_at, updated_at";
 const PROJECT_COLS: &str = "project_id, name, kind, created_at, updated_at";
 const ENTRY_COLS: &str = "pe_id, project_id, folder_id, role, display_name, order_index, created_at, updated_at";
+const BINDING_COLS: &str = "owner_user_id, project_id, assistant_id, folder_path, updated_at";
 
 #[async_trait::async_trait]
 impl IProjectStore for SqliteProjectStore {
@@ -296,5 +297,66 @@ impl IProjectStore for SqliteProjectStore {
         self.get_entry(user_id, pe_id)
             .await?
             .ok_or_else(|| DbError::NotFound(format!("project_explorer {pe_id}")))
+    }
+
+    async fn get_binding(
+        &self,
+        user_id: &str,
+        project_id: &str,
+    ) -> Result<Option<crate::models::ProjectBindingRow>, DbError> {
+        let row = sqlx::query_as::<_, crate::models::ProjectBindingRow>(&format!(
+            "SELECT {BINDING_COLS} FROM project_binding \
+             WHERE owner_user_id = ? AND project_id = ?"
+        ))
+        .bind(user_id)
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    async fn upsert_binding(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        assistant_id: &str,
+        folder_path: &str,
+        updated_at_ms: i64,
+    ) -> Result<crate::models::ProjectBindingRow, DbError> {
+        // INSERT OR REPLACE on the composite PK gives an idempotent upsert.
+        // The new updated_at overwrites the previous value.
+        sqlx::query(
+            "INSERT OR REPLACE INTO project_binding \
+             (owner_user_id, project_id, assistant_id, folder_path, updated_at) \
+             VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(user_id)
+        .bind(project_id)
+        .bind(assistant_id)
+        .bind(folder_path)
+        .bind(updated_at_ms)
+        .execute(&self.pool)
+        .await?;
+
+        let row = sqlx::query_as::<_, crate::models::ProjectBindingRow>(&format!(
+            "SELECT {BINDING_COLS} FROM project_binding \
+             WHERE owner_user_id = ? AND project_id = ?"
+        ))
+        .bind(user_id)
+        .bind(project_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    async fn delete_binding(&self, user_id: &str, project_id: &str) -> Result<bool, DbError> {
+        let result = sqlx::query(
+            "DELETE FROM project_binding WHERE owner_user_id = ? AND project_id = ?",
+        )
+        .bind(user_id)
+        .bind(project_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
     }
 }
