@@ -74,4 +74,27 @@ pub trait IProjectStore: Send + Sync {
         pe_id: &str,
         display_name: Option<&str>,
     ) -> Result<ProjectExplorerRow, DbError>;
+
+    /// Look up the current user's binding for a project. Returns `None` if no
+    /// row exists for `(user_id, project_id)`.
+    async fn get_binding(
+        &self,
+        user_id: &str,
+        project_id: &str,
+    ) -> Result<Option<crate::models::ProjectBindingRow>, DbError>;
+
+    /// Upsert (insert or replace) the current user's binding for a project.
+    /// `updated_at_ms` is the server-supplied epoch-ms timestamp.
+    async fn upsert_binding(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        assistant_id: &str,
+        folder_path: &str,
+        updated_at_ms: i64,
+    ) -> Result<crate::models::ProjectBindingRow, DbError>;
+
+    /// Delete the current user's binding for a project. Returns `true` if a row
+    /// was actually deleted, `false` if there was nothing to delete (idempotent).
+    async fn delete_binding(&self, user_id: &str, project_id: &str) -> Result<bool, DbError>;
 }
