@@ -26,11 +26,12 @@ pub use instance_lock::{DataDirInstanceGuard, instance_lock_path};
 pub use models::{
     AgentMetadataRow, AssistantDefinitionRow, AssistantOverlayRow, AssistantOverrideRow, AssistantPreferenceRow,
     AssistantRow, ConversationArtifactRow, ConversationAssistantSnapshotRow, CreateAssistantParams,
-    ExternalUserProjection, FolderRow, NoteRow, NoteTagRow, NotebookRow, ProjectExplorerRow, ProjectKind, ProjectRow,
-    Role, SkillImportRecordRow, SkillRow, TagRow, TagWithCountRow, UpdateAgentAvailabilitySnapshotParams,
-    UpdateAgentHandshakeParams, UpdateAssistantParams, UpsertAgentMetadataParams, UpsertAssistantDefinitionParams,
-    UpsertAssistantOverlayParams, UpsertAssistantPreferenceParams, UpsertConversationAssistantSnapshotParams,
-    UpsertOverrideParams, UserStatus, UserType,
+    ExternalUserProjection, FolderRow, NoteRow, NoteTagRow, NotebookRow, ProjectBindingRow, ProjectExplorerRow,
+    ProjectKind, ProjectRow, Role, SkillImportRecordRow, SkillRow, TagRow, TagWithCountRow,
+    UpdateAgentAvailabilitySnapshotParams, UpdateAgentHandshakeParams, UpdateAssistantParams,
+    UpsertAgentMetadataParams, UpsertAssistantDefinitionParams, UpsertAssistantOverlayParams,
+    UpsertAssistantPreferenceParams, UpsertConversationAssistantSnapshotParams, UpsertOverrideParams, UserStatus,
+    UserType,
 };
 pub use repository::channel::UpdatePluginStatusParams;
 pub use repository::conversation::{

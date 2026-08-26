@@ -1,8 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
-use aionui_common::generate_short_id;
-use aionui_db::{FolderRow, IProjectStore, ProjectExplorerRow, ProjectKind, Role};
+use aionui_api_types::ProjectBinding;
+use aionui_common::{generate_short_id, now_ms};
+use aionui_db::{FolderRow, IProjectStore, ProjectBindingRow, ProjectExplorerRow, ProjectKind, Role};
 use chrono::{Datelike, Local};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -11,7 +12,7 @@ use crate::containment;
 use crate::scm::ScmInbound;
 use crate::types::{
     AttachInput, FolderDto, ProjectDetail, ProjectError, ProjectExplorerEntry, ProjectExplorerView, ReferenceInput,
-    ResolveOutput, ResolvedResource, RuntimeStatus,
+    ResolveOutput, ResolvedResource, RuntimeStatus, UpsertBindingInput,
 };
 
 /// Orchestrates the three project-bind tables through an injected
@@ -378,6 +379,48 @@ impl ProjectService {
         }
     }
 
+    // ── project binding ──────────────────────────────────────────────
+
+    /// Read the current user's binding for a project. `None` ⇒ no row.
+    pub async fn get_binding(
+        &self,
+        user_id: &str,
+        project_id: &str,
+    ) -> Result<Option<ProjectBinding>, ProjectError> {
+        let row = self.store.get_binding(user_id, project_id).await?;
+        Ok(row.map(binding_row_to_dto))
+    }
+
+    /// Upsert the current user's binding for a project. Validates folder_path
+    /// length and assistant_id length before touching the store.
+    pub async fn upsert_binding(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        input: UpsertBindingInput,
+    ) -> Result<ProjectBinding, ProjectError> {
+        validate_binding_input(&input)?;
+        let updated_at_ms = now_ms();
+        let row = self
+            .store
+            .upsert_binding(
+                user_id,
+                project_id,
+                &input.assistant_id,
+                &input.folder_path,
+                updated_at_ms,
+            )
+            .await?;
+        tracing::info!(user_id, project_id, "project binding upserted");
+        Ok(binding_row_to_dto(row))
+    }
+
+    /// Idempotent: returns `Ok(())` whether or not a row existed.
+    pub async fn delete_binding(&self, user_id: &str, project_id: &str) -> Result<(), ProjectError> {
+        self.store.delete_binding(user_id, project_id).await?;
+        Ok(())
+    }
+
     // ── filesystem helpers ──────────────────────────────────────────────
 
     /// Stat a canonical folder to confirm it is an existing directory.
@@ -468,6 +511,39 @@ fn leaf_of(dir: &Path) -> String {
     dir.file_name()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default()
+}
+
+/// Length validation for binding upserts. Anti-junk caps only — no semantic
+/// checks (the spec explicitly defers assistant ACL and project ownership
+/// to other layers).
+fn validate_binding_input(input: &UpsertBindingInput) -> Result<(), ProjectError> {
+    if input.folder_path.is_empty() {
+        return Err(ProjectError::BindingInvalidInput {
+            field: "folder_path".into(),
+        });
+    }
+    if input.folder_path.len() > 4096 {
+        return Err(ProjectError::BindingInvalidInput {
+            field: "folder_path".into(),
+        });
+    }
+    if input.assistant_id.len() > 256 {
+        return Err(ProjectError::BindingInvalidInput {
+            field: "assistant_id".into(),
+        });
+    }
+    Ok(())
+}
+
+/// Row → DTO. Trivial field-for-field copy; kept in one place so future
+/// shape drift lands in one diff.
+fn binding_row_to_dto(row: ProjectBindingRow) -> ProjectBinding {
+    ProjectBinding {
+        project_id: row.project_id,
+        assistant_id: row.assistant_id,
+        folder_path: row.folder_path,
+        updated_at: row.updated_at,
+    }
 }
 
 /// Compute a folder's runtime availability by stat (never persisted).
