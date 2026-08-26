@@ -55,15 +55,14 @@ pub use repository::{
     IClientPreferenceRepository, IConversationRepository, ICronRepository, IFeedbackDiagnosticsRepository,
     IMcpServerRepository, INoteRepository, INotebookRepository, IOAuthTokenRepository, IProjectStore,
     IProviderRepository, IRemoteAgentRepository, ISettingsRepository, ISkillRepository, ITagRepository,
-    ITeamRepository, IUserRepository, ListNotesFilter, PageDirection, PersistedSessionState,
-    SaveRuntimeStateParams, SqliteAcpSessionRepository, SqliteAgentMetadataRepository,
-    SqliteAssistantDefinitionRepository, SqliteAssistantOverlayRepository, SqliteAssistantOverrideRepository,
-    SqliteAssistantPreferenceRepository, SqliteAssistantRepository, SqliteChannelRepository,
-    SqliteClientPreferenceRepository, SqliteConversationRepository, SqliteCronRepository,
-    SqliteFeedbackDiagnosticsRepository, SqliteMcpServerRepository, SqliteNoteRepository, SqliteNotebookRepository,
-    SqliteOAuthTokenRepository, SqliteProjectStore, SqliteProviderRepository, SqliteRemoteAgentRepository,
-    SqliteSettingsRepository, SqliteSkillRepository, SqliteTagRepository, SqliteTeamRepository, SqliteUserRepository,
-    UpdateNoteParams, UpdateNotebookParams,
+    ITeamRepository, IUserRepository, ListNotesFilter, PageDirection, PersistedSessionState, SaveRuntimeStateParams,
+    SqliteAcpSessionRepository, SqliteAgentMetadataRepository, SqliteAssistantDefinitionRepository,
+    SqliteAssistantOverlayRepository, SqliteAssistantOverrideRepository, SqliteAssistantPreferenceRepository,
+    SqliteAssistantRepository, SqliteChannelRepository, SqliteClientPreferenceRepository, SqliteConversationRepository,
+    SqliteCronRepository, SqliteFeedbackDiagnosticsRepository, SqliteMcpServerRepository, SqliteNoteRepository,
+    SqliteNotebookRepository, SqliteOAuthTokenRepository, SqliteProjectStore, SqliteProviderRepository,
+    SqliteRemoteAgentRepository, SqliteSettingsRepository, SqliteSkillRepository, SqliteTagRepository,
+    SqliteTeamRepository, SqliteUserRepository, UpdateNoteParams, UpdateNotebookParams,
 };
 
 // Re-export sqlx pool type for downstream crates

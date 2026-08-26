@@ -33,9 +33,7 @@ use serde_json::json;
 
 use crate::canonical;
 use crate::service::ProjectService;
-use crate::types::{
-    AttachInput, ProjectDetail, ProjectError, ProjectExplorerEntry, UpsertBindingInput,
-};
+use crate::types::{AttachInput, ProjectDetail, ProjectError, ProjectExplorerEntry, UpsertBindingInput};
 
 /// Shared state for project route handlers.
 #[derive(Clone)]

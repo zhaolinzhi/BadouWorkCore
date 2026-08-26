@@ -484,13 +484,15 @@ async fn bindings_are_isolated_per_user() {
         .unwrap();
     let project_id = created.project.project_id;
 
-    let router = project_routes(ProjectRouterState { project: service.clone() })
-        .layer(axum::Extension(aionui_auth::CurrentUser {
-            id: alice_user.id.clone(),
-            username: "alice".to_owned(),
-            user_type: aionui_db::UserType::Local,
-            status: aionui_db::UserStatus::Active,
-        }));
+    let router = project_routes(ProjectRouterState {
+        project: service.clone(),
+    })
+    .layer(axum::Extension(aionui_auth::CurrentUser {
+        id: alice_user.id.clone(),
+        username: "alice".to_owned(),
+        user_type: aionui_db::UserType::Local,
+        status: aionui_db::UserStatus::Active,
+    }));
 
     // Alice writes.
     let body = json!({
@@ -501,8 +503,8 @@ async fn bindings_are_isolated_per_user() {
     assert_eq!(status, StatusCode::OK);
 
     // Bob (same router, but with bob's CurrentUser) cannot see Alice's binding.
-    let bob_router = project_routes(ProjectRouterState { project: service })
-        .layer(axum::Extension(aionui_auth::CurrentUser {
+    let bob_router =
+        project_routes(ProjectRouterState { project: service }).layer(axum::Extension(aionui_auth::CurrentUser {
             id: bob_user.id.clone(),
             username: "bob".to_owned(),
             user_type: aionui_db::UserType::Local,

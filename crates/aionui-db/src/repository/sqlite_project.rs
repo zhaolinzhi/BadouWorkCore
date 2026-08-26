@@ -350,13 +350,11 @@ impl IProjectStore for SqliteProjectStore {
     }
 
     async fn delete_binding(&self, user_id: &str, project_id: &str) -> Result<bool, DbError> {
-        let result = sqlx::query(
-            "DELETE FROM project_binding WHERE owner_user_id = ? AND project_id = ?",
-        )
-        .bind(user_id)
-        .bind(project_id)
-        .execute(&self.pool)
-        .await?;
+        let result = sqlx::query("DELETE FROM project_binding WHERE owner_user_id = ? AND project_id = ?")
+            .bind(user_id)
+            .bind(project_id)
+            .execute(&self.pool)
+            .await?;
         Ok(result.rows_affected() > 0)
     }
 }

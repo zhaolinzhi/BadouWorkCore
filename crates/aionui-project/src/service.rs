@@ -382,11 +382,7 @@ impl ProjectService {
     // ── project binding ──────────────────────────────────────────────
 
     /// Read the current user's binding for a project. `None` ⇒ no row.
-    pub async fn get_binding(
-        &self,
-        user_id: &str,
-        project_id: &str,
-    ) -> Result<Option<ProjectBinding>, ProjectError> {
+    pub async fn get_binding(&self, user_id: &str, project_id: &str) -> Result<Option<ProjectBinding>, ProjectError> {
         let row = self.store.get_binding(user_id, project_id).await?;
         Ok(row.map(binding_row_to_dto))
     }
