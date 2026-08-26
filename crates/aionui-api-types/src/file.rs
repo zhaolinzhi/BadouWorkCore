@@ -301,6 +301,21 @@ pub struct SnapshotInfoResponse {
     pub branch: Option<String>,
 }
 
+/// `POST /api/fs/exists` body. `path` must be a non-empty absolute path string
+/// the client wishes to stat; length cap mirrors `project_binding.folder_path`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct FsExistsRequest {
+    pub path: String,
+}
+
+/// `POST /api/fs/exists` response. `exists` is `true` when the path resolves
+/// to a stat-able filesystem entry; `false` covers `ENOENT`, `ENOTDIR`, and
+/// any other "not here" condition the caller should treat as missing.
+#[derive(Debug, Clone, Serialize)]
+pub struct FsExistsResponse {
+    pub exists: bool,
+}
+
 /// A single file change entry in a compare result.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FileChangeInfoResponse {
