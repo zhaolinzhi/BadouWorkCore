@@ -13,11 +13,11 @@ use tower_http::services::ServeFile;
 
 use aionui_api_types::{
     ApiResponse, ContentMetadataRequest, CopyFilesRequest, CopyFilesResponse, DirOrFileResponse,
-    FetchRemoteImageRequest, FileChangeInfoResponse, FileMetadataResponse, GetFileMetadataRequest,
-    GetFilesByDirRequest, GetImageBase64Request, ListWorkspaceFilesRequest, OpenSystemFileRequest, ReadContentRequest,
-    ReadFileRequest, RevealItemRequest, SnapshotBaselineRequest, SnapshotCompareResponse, SnapshotDiscardRequest,
-    SnapshotInfoResponse, SnapshotStageRequest, SnapshotWorkspaceRequest, StreamQuery, WorkspaceFlatFileResponse,
-    WriteContentRequest, WriteFileRequest,
+    FetchRemoteImageRequest, FileChangeInfoResponse, FileMetadataResponse, FsExistsRequest, FsExistsResponse,
+    GetFileMetadataRequest, GetFilesByDirRequest, GetImageBase64Request, ListWorkspaceFilesRequest,
+    OpenSystemFileRequest, ReadContentRequest, ReadFileRequest, RevealItemRequest, SnapshotBaselineRequest,
+    SnapshotCompareResponse, SnapshotDiscardRequest, SnapshotInfoResponse, SnapshotStageRequest,
+    SnapshotWorkspaceRequest, StreamQuery, WorkspaceFlatFileResponse, WriteContentRequest, WriteFileRequest,
 };
 use aionui_auth::CurrentUser;
 use aionui_common::ApiError;
@@ -154,9 +154,36 @@ pub fn file_routes(state: FileRouterState) -> Router {
         .route("/api/fs/snapshot/reset", post(snapshot_reset))
         .route("/api/fs/snapshot/branches", post(snapshot_branches))
         .route("/api/fs/snapshot/dispose", post(snapshot_dispose))
+        .route("/api/fs/exists", post(fs_exists))
         .with_state(state)
         .merge(upload_router)
         .merge(content_router)
+}
+
+/// Build a tiny router with only the `/api/fs/exists` route. Used by tests
+/// to exercise the handler without standing up the full `FileRouterState`.
+pub fn fs_exists_router() -> Router {
+    Router::new().route("/api/fs/exists", post(fs_exists))
+}
+
+/// `POST /api/fs/exists` — stats the supplied path and returns `{ exists }`.
+/// `ENOENT` / `ENOTDIR` collapse to `exists: false`; other IO errors become
+/// `500` (the frontend treats any non-200 as "endpoint unavailable" and
+/// falls back to localStorage per spec §4.4).
+async fn fs_exists(Json(req): Json<FsExistsRequest>) -> Result<Json<ApiResponse<FsExistsResponse>>, ApiError> {
+    if req.path.is_empty() {
+        return Err(ApiError::BadRequest("invalid path".to_owned()));
+    }
+    if req.path.len() > 4096 {
+        return Err(ApiError::BadRequest("invalid path".to_owned()));
+    }
+    match tokio::fs::metadata(&req.path).await {
+        Ok(_) => Ok(Json(ApiResponse::ok(FsExistsResponse { exists: true }))),
+        Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => {
+            Ok(Json(ApiResponse::ok(FsExistsResponse { exists: false })))
+        }
+        Err(e) => Err(ApiError::Internal(format!("stat failed: {e}"))),
+    }
 }
 
 // ---------------------------------------------------------------------------
