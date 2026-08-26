@@ -466,19 +466,27 @@ async fn delete_binding_is_idempotent() {
 #[tokio::test]
 async fn bindings_are_isolated_per_user() {
     // Build a router with a different CurrentUser than the seed in setup().
+    // FK to users(id) on project_explorer.owner_user_id requires the row to
+    // exist before we can create a project for that user. `IUserRepository`
+    // mints its own id, so we read it back and use that as the service's
+    // user_id (the wire-level CurrentUser.id is what we control).
     let db = init_database_memory().await.unwrap();
+    let user_repo: Arc<dyn aionui_db::IUserRepository> =
+        Arc::new(aionui_db::SqliteUserRepository::new(db.pool().clone()));
+    let alice_user = user_repo.create_user("alice", "hash").await.unwrap();
+    let bob_user = user_repo.create_user("bob", "hash").await.unwrap();
     let store: Arc<dyn IProjectStore> = Arc::new(SqliteProjectStore::new(db.pool().clone()));
     let service = Arc::new(ProjectService::new(Arc::clone(&store), std::env::temp_dir()));
     let dir = tempfile::tempdir().unwrap();
     let created = service
-        .create_standard("alice", to_file_uri(dir.path()).unwrap())
+        .create_standard(&alice_user.id, to_file_uri(dir.path()).unwrap())
         .await
         .unwrap();
     let project_id = created.project.project_id;
 
     let router = project_routes(ProjectRouterState { project: service.clone() })
         .layer(axum::Extension(aionui_auth::CurrentUser {
-            id: "alice".to_owned(),
+            id: alice_user.id.clone(),
             username: "alice".to_owned(),
             user_type: aionui_db::UserType::Local,
             status: aionui_db::UserStatus::Active,
@@ -495,7 +503,7 @@ async fn bindings_are_isolated_per_user() {
     // Bob (same router, but with bob's CurrentUser) cannot see Alice's binding.
     let bob_router = project_routes(ProjectRouterState { project: service })
         .layer(axum::Extension(aionui_auth::CurrentUser {
-            id: "bob".to_owned(),
+            id: bob_user.id.clone(),
             username: "bob".to_owned(),
             user_type: aionui_db::UserType::Local,
             status: aionui_db::UserStatus::Active,
