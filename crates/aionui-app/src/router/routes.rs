@@ -34,7 +34,7 @@ use aionui_file::file_routes;
 use aionui_mcp::mcp_routes;
 use aionui_notebook::notebook_routes;
 use aionui_office::{office_proxy_routes, office_routes};
-use aionui_project::project_routes;
+use aionui_project::{project_binding_routes, project_routes};
 use aionui_realtime::{NoopMessageRouter, WsHandlerState, ws_upgrade_handler};
 use aionui_shell::shell_routes;
 use aionui_system::{ClientPrefService, connection_test_routes, system_routes};
@@ -282,7 +282,14 @@ pub fn create_router_with_all_state(services: &AppServices, states: ModuleStates
 
     // Project control-plane routes protected by auth middleware
     let project_authenticated =
-        project_routes(states.project).route_layer(from_fn_with_state(auth_mw_state.clone(), auth_middleware));
+        project_routes(states.project.clone()).route_layer(from_fn_with_state(auth_mw_state.clone(), auth_middleware));
+
+    // Project-binding routes (top-level URL shape: /api/project-binding/{id})
+    // protected by auth middleware. Lives outside project_routes because the
+    // URL shape (`/api/project-binding/{id}`) does not nest under
+    // `/api/projects/{id}/...`.
+    let project_binding_authenticated = project_binding_routes(states.project)
+        .route_layer(from_fn_with_state(auth_mw_state.clone(), auth_middleware));
 
     // MCP routes protected by auth middleware
     let mcp_authenticated =
@@ -370,6 +377,7 @@ pub fn create_router_with_all_state(services: &AppServices, states: ModuleStates
         .merge(connection_test_authenticated)
         .merge(file_authenticated)
         .merge(project_authenticated)
+        .merge(project_binding_authenticated)
         .merge(mcp_authenticated)
         .merge(extension_authenticated)
         .merge(hub_authenticated)

@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 use tempfile::TempDir;
 use tower::ServiceExt;
 
-use super::{ProjectRouterState, project_routes};
+use super::{ProjectRouterState, project_binding_routes, project_routes};
 use crate::ProjectService;
 use crate::canonical::to_file_uri;
 use crate::types::ProjectError;
@@ -42,13 +42,16 @@ async fn setup() -> (Router, String, String, TempDir, Database) {
 
     // Handlers extract `Extension<CurrentUser>`; production wiring injects it
     // via the auth middleware — tests inject the seeded default user directly.
-    let router =
-        project_routes(ProjectRouterState { project: service }).layer(axum::Extension(aionui_auth::CurrentUser {
-            id: "system_default_user".to_owned(),
-            username: "admin".to_owned(),
-            user_type: aionui_db::UserType::Local,
-            status: aionui_db::UserStatus::Active,
-        }));
+    let router = project_routes(ProjectRouterState {
+        project: service.clone(),
+    })
+    .merge(project_binding_routes(ProjectRouterState { project: service }))
+    .layer(axum::Extension(aionui_auth::CurrentUser {
+        id: "system_default_user".to_owned(),
+        username: "admin".to_owned(),
+        user_type: aionui_db::UserType::Local,
+        status: aionui_db::UserStatus::Active,
+    }));
     (router, project_id, workspace_pe_id, dir, db)
 }
 
@@ -383,4 +386,134 @@ async fn resolve_ref_returns_the_ref_when_the_file_is_missing_even_for_an_unknow
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["file"]["kind"], "local");
     assert_eq!(body["data"]["upgraded"], false);
+}
+
+fn binding_url(project_id: &str) -> String {
+    format!("/api/project-binding/{project_id}")
+}
+
+#[tokio::test]
+async fn get_binding_returns_null_when_missing() {
+    let (router, project_id, _ws_pe, _dir, _db) = setup().await;
+    let (status, body) = send(&router, "GET", &binding_url(&project_id), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"]["binding"], Value::Null);
+}
+
+#[tokio::test]
+async fn put_then_get_returns_binding() {
+    let (router, project_id, _ws_pe, dir, _db) = setup().await;
+    let folder = dir.path().to_string_lossy().into_owned();
+    let body = json!({
+        "assistantId": "aionrs-default",
+        "folderPath": folder,
+    });
+    let (status, _) = send(&router, "PUT", &binding_url(&project_id), Some(body)).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, body) = send(&router, "GET", &binding_url(&project_id), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"]["binding"]["projectId"], project_id);
+    assert_eq!(body["data"]["binding"]["assistantId"], "aionrs-default");
+    assert_eq!(body["data"]["binding"]["folderPath"], folder);
+    assert!(body["data"]["binding"]["updatedAt"].as_i64().unwrap() > 0);
+}
+
+#[tokio::test]
+async fn put_upserts_existing_binding() {
+    let (router, project_id, _ws_pe, dir, _db) = setup().await;
+    let folder = dir.path().to_string_lossy().into_owned();
+
+    let first = json!({ "assistantId": "v1", "folderPath": folder });
+    send(&router, "PUT", &binding_url(&project_id), Some(first)).await;
+
+    // Sleep 2ms so the second upsert's updated_at is strictly greater on
+    // platforms with coarse epoch-ms resolution.
+    tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+
+    let second = json!({ "assistantId": "v2", "folderPath": format!("{folder}/sub") });
+    let (status, body) = send(&router, "PUT", &binding_url(&project_id), Some(second)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"]["binding"]["assistantId"], "v2");
+    assert_eq!(body["data"]["binding"]["folderPath"], format!("{folder}/sub"));
+}
+
+#[tokio::test]
+async fn put_rejects_empty_folder_path() {
+    let (router, project_id, _ws_pe, _dir, _db) = setup().await;
+    let body = json!({ "assistantId": "a", "folderPath": "" });
+    let (status, payload) = send(&router, "PUT", &binding_url(&project_id), Some(body)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(payload["code"], "binding_invalid_input");
+}
+
+#[tokio::test]
+async fn put_rejects_overlong_folder_path() {
+    let (router, project_id, _ws_pe, _dir, _db) = setup().await;
+    let huge = "a".repeat(4097);
+    let body = json!({ "assistantId": "a", "folderPath": huge });
+    let (status, payload) = send(&router, "PUT", &binding_url(&project_id), Some(body)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(payload["code"], "binding_invalid_input");
+}
+
+#[tokio::test]
+async fn delete_binding_is_idempotent() {
+    let (router, project_id, _ws_pe, _dir, _db) = setup().await;
+    let (status1, _) = send(&router, "DELETE", &binding_url(&project_id), None).await;
+    assert_eq!(status1, StatusCode::NO_CONTENT);
+    let (status2, _) = send(&router, "DELETE", &binding_url(&project_id), None).await;
+    assert_eq!(status2, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn bindings_are_isolated_per_user() {
+    // Build a router with a different CurrentUser than the seed in setup().
+    // FK to users(id) on project_explorer.owner_user_id requires the row to
+    // exist before we can create a project for that user. `IUserRepository`
+    // mints its own id, so we read it back and use that as the service's
+    // user_id (the wire-level CurrentUser.id is what we control).
+    let db = init_database_memory().await.unwrap();
+    let user_repo: Arc<dyn aionui_db::IUserRepository> =
+        Arc::new(aionui_db::SqliteUserRepository::new(db.pool().clone()));
+    let alice_user = user_repo.create_user("alice", "hash").await.unwrap();
+    let bob_user = user_repo.create_user("bob", "hash").await.unwrap();
+    let store: Arc<dyn IProjectStore> = Arc::new(SqliteProjectStore::new(db.pool().clone()));
+    let service = Arc::new(ProjectService::new(Arc::clone(&store), std::env::temp_dir()));
+    let dir = tempfile::tempdir().unwrap();
+    let created = service
+        .create_standard(&alice_user.id, to_file_uri(dir.path()).unwrap())
+        .await
+        .unwrap();
+    let project_id = created.project.project_id;
+
+    let router = project_binding_routes(ProjectRouterState {
+        project: service.clone(),
+    })
+    .layer(axum::Extension(aionui_auth::CurrentUser {
+        id: alice_user.id.clone(),
+        username: "alice".to_owned(),
+        user_type: aionui_db::UserType::Local,
+        status: aionui_db::UserStatus::Active,
+    }));
+
+    // Alice writes.
+    let body = json!({
+        "assistantId": "aionrs-default",
+        "folderPath": dir.path().to_string_lossy(),
+    });
+    let (status, _) = send(&router, "PUT", &binding_url(&project_id), Some(body)).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Bob (same router, but with bob's CurrentUser) cannot see Alice's binding.
+    let bob_router =
+        project_binding_routes(ProjectRouterState { project: service }).layer(axum::Extension(aionui_auth::CurrentUser {
+            id: bob_user.id.clone(),
+            username: "bob".to_owned(),
+            user_type: aionui_db::UserType::Local,
+            status: aionui_db::UserStatus::Active,
+        }));
+    let (status, body) = send(&bob_router, "GET", &binding_url(&project_id), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"]["binding"], Value::Null);
 }

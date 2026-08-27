@@ -93,3 +93,52 @@ pub struct ResolveRefResponse {
     /// write when nothing changed, without comparing the refs itself.
     pub upgraded: bool,
 }
+
+/// `GET/PUT/DELETE /api/projects/{project_id}/binding` payload.
+///
+/// `updated_at` is the server-side epoch-ms timestamp of the last upsert.
+/// One binding per `(user_id, project_id)`; `user_id` is server-injected from
+/// the auth session and never appears in the wire body.
+///
+/// Fields serialize as camelCase to match the frontend
+/// `ProjectBinding` type in `BadouWorkUi/packages/desktop/src/renderer/api/types.ts`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectBinding {
+    pub project_id: String,
+    pub assistant_id: String,
+    pub folder_path: String,
+    pub updated_at: i64,
+}
+
+/// `PUT /api/projects/{project_id}/binding` body.
+///
+/// `assistant_id` is an opaque client string (server does not validate against
+/// the assistant catalog per spec §4.2). `folder_path` is the raw absolute
+/// path the client supplied; length-validated server-side.
+///
+/// Fields deserialize from camelCase (`assistantId`, `folderPath`) to match
+/// the frontend's `ipcBridge.projectBinding.put` payload shape.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpsertBindingRequest {
+    pub assistant_id: String,
+    pub folder_path: String,
+}
+
+/// `GET /api/projects/{project_id}/binding` response.
+///
+/// `binding` is `None` when no row exists for the `(current user, project_id)`
+/// pair — chosen semantics (see spec §4.1) so the frontend does not have to
+/// branch on 200 vs 404.
+#[derive(Debug, Clone, Serialize)]
+pub struct GetBindingResponse {
+    pub binding: Option<ProjectBinding>,
+}
+
+/// `PUT /api/projects/{project_id}/binding` response. `project_id` is filled
+/// from the path; `updated_at` is server-generated.
+#[derive(Debug, Clone, Serialize)]
+pub struct UpsertBindingResponse {
+    pub binding: ProjectBinding,
+}

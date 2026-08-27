@@ -19,7 +19,7 @@ mod service;
 pub mod types;
 
 pub use chat_files::ResolvedChatMessage;
-pub use routes::{ProjectRouterState, project_routes};
+pub use routes::{ProjectRouterState, project_binding_routes, project_routes};
 pub use service::ProjectService;
 pub use types::{
     AttachInput, FileOp, FolderDto, ProjectDetail, ProjectError, ProjectExplorerEntry, ProjectExplorerView,

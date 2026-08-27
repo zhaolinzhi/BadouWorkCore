@@ -19,8 +19,8 @@
 use std::sync::Arc;
 
 use aionui_api_types::{
-    ApiResponse, AttachFolderRequest, ProjectDetailResponse, ProjectEntry, ProjectExplorer, ResolveRefRequest,
-    ResolveRefResponse,
+    ApiResponse, AttachFolderRequest, GetBindingResponse, ProjectDetailResponse, ProjectEntry, ProjectExplorer,
+    ResolveRefRequest, ResolveRefResponse, UpsertBindingRequest, UpsertBindingResponse,
 };
 use aionui_auth::CurrentUser;
 use aionui_common::ApiError;
@@ -33,7 +33,7 @@ use serde_json::json;
 
 use crate::canonical;
 use crate::service::ProjectService;
-use crate::types::{AttachInput, ProjectDetail, ProjectError, ProjectExplorerEntry};
+use crate::types::{AttachInput, ProjectDetail, ProjectError, ProjectExplorerEntry, UpsertBindingInput};
 
 /// Shared state for project route handlers.
 #[derive(Clone)]
@@ -50,6 +50,26 @@ pub fn project_routes(state: ProjectRouterState) -> Router {
         .route("/api/projects/{project_id}/folders", post(attach_folder))
         .route("/api/projects/{project_id}/folders/{pe_id}", delete(remove_folder))
         .route("/api/projects/{project_id}/resolve-ref", post(resolve_ref))
+        .with_state(state)
+}
+
+/// Build the project-binding router (`/api/project-binding/*`).
+///
+/// Lives at the top-level URL shape (not under `/api/projects/{id}/...`) to
+/// match the frontend `ipcBridge.projectBinding` contract in
+/// `BadouWorkUi/packages/desktop/src/common/adapter/ipcBridge.ts`. The
+/// `ProjectService` enforces user isolation per query, so the project_id
+/// does not need to be validated against `projects` here — see
+/// `docs/superpowers/specs/2026-08-26-project-binding-design.md` for the
+/// rationale.
+///
+/// All routes require authentication (applied by the caller).
+pub fn project_binding_routes(state: ProjectRouterState) -> Router {
+    Router::new()
+        .route(
+            "/api/project-binding/{project_id}",
+            get(get_binding).put(put_binding).delete(delete_binding),
+        )
         .with_state(state)
 }
 
@@ -143,6 +163,51 @@ async fn remove_folder(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// `GET /api/projects/{project_id}/binding` — return the current user's
+/// binding, or `{ "binding": null }` when none exists (see spec §4.1).
+async fn get_binding(
+    State(state): State<ProjectRouterState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(project_id): Path<String>,
+) -> Result<Json<ApiResponse<GetBindingResponse>>, ApiError> {
+    let binding = state.project.get_binding(&user.id, &project_id).await?;
+    Ok(Json(ApiResponse::ok(GetBindingResponse { binding })))
+}
+
+/// `PUT /api/projects/{project_id}/binding` — upsert the current user's
+/// binding. Length validation lives in the service layer; HTTP boundary only
+/// maps the JSON envelope.
+async fn put_binding(
+    State(state): State<ProjectRouterState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(project_id): Path<String>,
+    body: Result<Json<UpsertBindingRequest>, JsonRejection>,
+) -> Result<Json<ApiResponse<UpsertBindingResponse>>, ApiError> {
+    let Json(req) = body.map_err(ApiError::from)?;
+    let binding = state
+        .project
+        .upsert_binding(
+            &user.id,
+            &project_id,
+            UpsertBindingInput {
+                assistant_id: req.assistant_id,
+                folder_path: req.folder_path,
+            },
+        )
+        .await?;
+    Ok(Json(ApiResponse::ok(UpsertBindingResponse { binding })))
+}
+
+/// `DELETE /api/projects/{project_id}/binding` — idempotent. Always 204.
+async fn delete_binding(
+    State(state): State<ProjectRouterState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(project_id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    state.project.delete_binding(&user.id, &project_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 // ── mapping: domain → wire DTO ───────────────────────────────────────────────
 
 fn to_detail_response(detail: ProjectDetail) -> ProjectDetailResponse {
@@ -232,6 +297,11 @@ impl From<ProjectError> for ApiError {
                 StatusCode::NOT_FOUND,
                 "chat_file_missing",
                 Some(json!({ "path": path })),
+            ),
+            ProjectError::BindingInvalidInput { field } => (
+                StatusCode::BAD_REQUEST,
+                "binding_invalid_input",
+                Some(json!({ "field": field })),
             ),
             ProjectError::LocalPathNotReadable { path } => (
                 StatusCode::BAD_REQUEST,
