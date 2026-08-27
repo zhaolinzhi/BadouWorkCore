@@ -405,18 +405,18 @@ async fn put_then_get_returns_binding() {
     let (router, project_id, _ws_pe, dir, _db) = setup().await;
     let folder = dir.path().to_string_lossy().into_owned();
     let body = json!({
-        "assistant_id": "aionrs-default",
-        "folder_path": folder,
+        "assistantId": "aionrs-default",
+        "folderPath": folder,
     });
     let (status, _) = send(&router, "PUT", &binding_url(&project_id), Some(body)).await;
     assert_eq!(status, StatusCode::OK);
 
     let (status, body) = send(&router, "GET", &binding_url(&project_id), None).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["binding"]["project_id"], project_id);
-    assert_eq!(body["data"]["binding"]["assistant_id"], "aionrs-default");
-    assert_eq!(body["data"]["binding"]["folder_path"], folder);
-    assert!(body["data"]["binding"]["updated_at"].as_i64().unwrap() > 0);
+    assert_eq!(body["data"]["binding"]["projectId"], project_id);
+    assert_eq!(body["data"]["binding"]["assistantId"], "aionrs-default");
+    assert_eq!(body["data"]["binding"]["folderPath"], folder);
+    assert!(body["data"]["binding"]["updatedAt"].as_i64().unwrap() > 0);
 }
 
 #[tokio::test]
@@ -424,24 +424,24 @@ async fn put_upserts_existing_binding() {
     let (router, project_id, _ws_pe, dir, _db) = setup().await;
     let folder = dir.path().to_string_lossy().into_owned();
 
-    let first = json!({ "assistant_id": "v1", "folder_path": folder });
+    let first = json!({ "assistantId": "v1", "folderPath": folder });
     send(&router, "PUT", &binding_url(&project_id), Some(first)).await;
 
     // Sleep 2ms so the second upsert's updated_at is strictly greater on
     // platforms with coarse epoch-ms resolution.
     tokio::time::sleep(std::time::Duration::from_millis(2)).await;
 
-    let second = json!({ "assistant_id": "v2", "folder_path": format!("{folder}/sub") });
+    let second = json!({ "assistantId": "v2", "folderPath": format!("{folder}/sub") });
     let (status, body) = send(&router, "PUT", &binding_url(&project_id), Some(second)).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["binding"]["assistant_id"], "v2");
-    assert_eq!(body["data"]["binding"]["folder_path"], format!("{folder}/sub"));
+    assert_eq!(body["data"]["binding"]["assistantId"], "v2");
+    assert_eq!(body["data"]["binding"]["folderPath"], format!("{folder}/sub"));
 }
 
 #[tokio::test]
 async fn put_rejects_empty_folder_path() {
     let (router, project_id, _ws_pe, _dir, _db) = setup().await;
-    let body = json!({ "assistant_id": "a", "folder_path": "" });
+    let body = json!({ "assistantId": "a", "folderPath": "" });
     let (status, payload) = send(&router, "PUT", &binding_url(&project_id), Some(body)).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(payload["code"], "binding_invalid_input");
@@ -451,7 +451,7 @@ async fn put_rejects_empty_folder_path() {
 async fn put_rejects_overlong_folder_path() {
     let (router, project_id, _ws_pe, _dir, _db) = setup().await;
     let huge = "a".repeat(4097);
-    let body = json!({ "assistant_id": "a", "folder_path": huge });
+    let body = json!({ "assistantId": "a", "folderPath": huge });
     let (status, payload) = send(&router, "PUT", &binding_url(&project_id), Some(body)).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(payload["code"], "binding_invalid_input");
@@ -499,8 +499,8 @@ async fn bindings_are_isolated_per_user() {
 
     // Alice writes.
     let body = json!({
-        "assistant_id": "aionrs-default",
-        "folder_path": dir.path().to_string_lossy(),
+        "assistantId": "aionrs-default",
+        "folderPath": dir.path().to_string_lossy(),
     });
     let (status, _) = send(&router, "PUT", &binding_url(&project_id), Some(body)).await;
     assert_eq!(status, StatusCode::OK);

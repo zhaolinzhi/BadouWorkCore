@@ -99,7 +99,11 @@ pub struct ResolveRefResponse {
 /// `updated_at` is the server-side epoch-ms timestamp of the last upsert.
 /// One binding per `(user_id, project_id)`; `user_id` is server-injected from
 /// the auth session and never appears in the wire body.
+///
+/// Fields serialize as camelCase to match the frontend
+/// `ProjectBinding` type in `BadouWorkUi/packages/desktop/src/renderer/api/types.ts`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectBinding {
     pub project_id: String,
     pub assistant_id: String,
@@ -112,7 +116,11 @@ pub struct ProjectBinding {
 /// `assistant_id` is an opaque client string (server does not validate against
 /// the assistant catalog per spec §4.2). `folder_path` is the raw absolute
 /// path the client supplied; length-validated server-side.
+///
+/// Fields deserialize from camelCase (`assistantId`, `folderPath`) to match
+/// the frontend's `ipcBridge.projectBinding.put` payload shape.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpsertBindingRequest {
     pub assistant_id: String,
     pub folder_path: String,
