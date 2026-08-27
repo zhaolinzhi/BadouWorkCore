@@ -47,13 +47,29 @@ pub struct ProjectRouterState {
 pub fn project_routes(state: ProjectRouterState) -> Router {
     Router::new()
         .route("/api/projects/{project_id}", get(get_project))
-        .route(
-            "/api/projects/{project_id}/binding",
-            get(get_binding).put(put_binding).delete(delete_binding),
-        )
         .route("/api/projects/{project_id}/folders", post(attach_folder))
         .route("/api/projects/{project_id}/folders/{pe_id}", delete(remove_folder))
         .route("/api/projects/{project_id}/resolve-ref", post(resolve_ref))
+        .with_state(state)
+}
+
+/// Build the project-binding router (`/api/project-binding/*`).
+///
+/// Lives at the top-level URL shape (not under `/api/projects/{id}/...`) to
+/// match the frontend `ipcBridge.projectBinding` contract in
+/// `BadouWorkUi/packages/desktop/src/common/adapter/ipcBridge.ts`. The
+/// `ProjectService` enforces user isolation per query, so the project_id
+/// does not need to be validated against `projects` here — see
+/// `docs/superpowers/specs/2026-08-26-project-binding-design.md` for the
+/// rationale.
+///
+/// All routes require authentication (applied by the caller).
+pub fn project_binding_routes(state: ProjectRouterState) -> Router {
+    Router::new()
+        .route(
+            "/api/project-binding/{project_id}",
+            get(get_binding).put(put_binding).delete(delete_binding),
+        )
         .with_state(state)
 }
 

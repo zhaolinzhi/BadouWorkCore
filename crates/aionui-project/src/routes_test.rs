@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 use tempfile::TempDir;
 use tower::ServiceExt;
 
-use super::{ProjectRouterState, project_routes};
+use super::{ProjectRouterState, project_binding_routes, project_routes};
 use crate::ProjectService;
 use crate::canonical::to_file_uri;
 use crate::types::ProjectError;
@@ -42,13 +42,16 @@ async fn setup() -> (Router, String, String, TempDir, Database) {
 
     // Handlers extract `Extension<CurrentUser>`; production wiring injects it
     // via the auth middleware — tests inject the seeded default user directly.
-    let router =
-        project_routes(ProjectRouterState { project: service }).layer(axum::Extension(aionui_auth::CurrentUser {
-            id: "system_default_user".to_owned(),
-            username: "admin".to_owned(),
-            user_type: aionui_db::UserType::Local,
-            status: aionui_db::UserStatus::Active,
-        }));
+    let router = project_routes(ProjectRouterState {
+        project: service.clone(),
+    })
+    .merge(project_binding_routes(ProjectRouterState { project: service }))
+    .layer(axum::Extension(aionui_auth::CurrentUser {
+        id: "system_default_user".to_owned(),
+        username: "admin".to_owned(),
+        user_type: aionui_db::UserType::Local,
+        status: aionui_db::UserStatus::Active,
+    }));
     (router, project_id, workspace_pe_id, dir, db)
 }
 
@@ -386,7 +389,7 @@ async fn resolve_ref_returns_the_ref_when_the_file_is_missing_even_for_an_unknow
 }
 
 fn binding_url(project_id: &str) -> String {
-    format!("/api/projects/{project_id}/binding")
+    format!("/api/project-binding/{project_id}")
 }
 
 #[tokio::test]
@@ -484,7 +487,7 @@ async fn bindings_are_isolated_per_user() {
         .unwrap();
     let project_id = created.project.project_id;
 
-    let router = project_routes(ProjectRouterState {
+    let router = project_binding_routes(ProjectRouterState {
         project: service.clone(),
     })
     .layer(axum::Extension(aionui_auth::CurrentUser {
@@ -504,7 +507,7 @@ async fn bindings_are_isolated_per_user() {
 
     // Bob (same router, but with bob's CurrentUser) cannot see Alice's binding.
     let bob_router =
-        project_routes(ProjectRouterState { project: service }).layer(axum::Extension(aionui_auth::CurrentUser {
+        project_binding_routes(ProjectRouterState { project: service }).layer(axum::Extension(aionui_auth::CurrentUser {
             id: bob_user.id.clone(),
             username: "bob".to_owned(),
             user_type: aionui_db::UserType::Local,
