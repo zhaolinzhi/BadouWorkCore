@@ -1,5 +1,5 @@
 ---
-name: aionui-troubleshooting
+name: badouwork-troubleshooting
 description: >-
   Diagnose a running AionUi installation: inspect stuck or errored conversations, read provider health, scheduled task state, MCP server health, team member state, backend health, and aioncore logs. Use when the user reports AionUi is misbehaving, a conversation is stuck, an LLM/provider call is failing, a scheduled task did not run, an MCP server has no tools, a team member is hung, or they ask to troubleshoot AionUi.
 ---
