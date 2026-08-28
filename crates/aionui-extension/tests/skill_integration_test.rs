@@ -765,14 +765,10 @@ async fn security_assistant_crud_path_traversal_locale() {
     assert!(write_assistant_skill(&paths, "valid", "x", Some("a\\b")).await.is_err());
 }
 
-
 #[test]
 fn canonicalize_builtin_skill_name_aliases_legacy_names() {
     use aionui_extension::skill_service::canonicalize_builtin_skill_name;
-    assert_eq!(
-        canonicalize_builtin_skill_name("aionui-config"),
-        "badouwork-config"
-    );
+    assert_eq!(canonicalize_builtin_skill_name("aionui-config"), "badouwork-config");
     assert_eq!(
         canonicalize_builtin_skill_name("aionui-troubleshooting"),
         "badouwork-troubleshooting"
@@ -786,17 +782,13 @@ fn canonicalize_builtin_skill_name_aliases_legacy_names() {
         "badouwork-webui-setup"
     );
     // Idempotent on already-canonical names.
-    assert_eq!(
-        canonicalize_builtin_skill_name("badouwork-config"),
-        "badouwork-config"
-    );
+    assert_eq!(canonicalize_builtin_skill_name("badouwork-config"), "badouwork-config");
     // Pass-through on unknown names.
     assert_eq!(
         canonicalize_builtin_skill_name("totally-unrelated"),
         "totally-unrelated"
     );
 }
-
 
 #[tokio::test]
 async fn read_builtin_skill_resolves_legacy_alias() {
@@ -816,10 +808,7 @@ async fn read_builtin_skill_resolves_legacy_alias() {
         std::env::set_var(BUILTIN_SKILLS_ENV_VAR, &builtin_dir);
     }
 
-    let paths = resolve_skill_paths(
-        &tmp.path().join("app-resource"),
-        &tmp.path().join("data"),
-    );
+    let paths = resolve_skill_paths(&tmp.path().join("app-resource"), &tmp.path().join("data"));
 
     let canonical = read_builtin_skill(&paths, "auto-inject/badouwork-config/SKILL.md")
         .await
@@ -830,10 +819,7 @@ async fn read_builtin_skill_resolves_legacy_alias() {
 
     assert_eq!(legacy, canonical);
     let expected_marker = "name: badouwork";
-    assert!(
-        canonical.contains(expected_marker),
-        "unexpected body: {canonical}"
-    );
+    assert!(canonical.contains(expected_marker), "unexpected body: {canonical}");
 
     unsafe {
         std::env::remove_var(BUILTIN_SKILLS_ENV_VAR);

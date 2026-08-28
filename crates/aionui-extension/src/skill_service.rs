@@ -222,7 +222,12 @@ pub async fn read_builtin_skill(paths: &SkillPaths, file_name: &str) -> Result<S
 fn canonicalize_builtin_skill_path(file_name: &str) -> String {
     if let Some(dir) = file_name.strip_suffix(&format!("/{SKILL_MANIFEST_FILE}")) {
         if let Some((parent, leaf)) = dir.rsplit_once('/') {
-            format!("{}/{}/{}", parent, canonicalize_builtin_skill_name(leaf), SKILL_MANIFEST_FILE)
+            format!(
+                "{}/{}/{}",
+                parent,
+                canonicalize_builtin_skill_name(leaf),
+                SKILL_MANIFEST_FILE
+            )
         } else {
             format!("{}/{}", canonicalize_builtin_skill_name(dir), SKILL_MANIFEST_FILE)
         }
