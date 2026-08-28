@@ -12,7 +12,7 @@ use aionui_db::{
 };
 use aionui_extension::external_paths::ExternalPathsManager;
 use aionui_extension::skill_service::{
-    NamedPath, SkillPaths, delete_assistant_rule, delete_assistant_skill, delete_skill,
+    BUILTIN_SKILLS_ENV_VAR, NamedPath, SkillPaths, delete_assistant_rule, delete_assistant_skill, delete_skill,
     detect_and_count_external_skills, export_skill_with_symlink, import_skill, import_skill_with_repo_for_user,
     list_available_skills, materialize_skills_for_agent_with_repo_for_user, read_assistant_rule, read_assistant_skill,
     read_builtin_rule, read_builtin_skill, read_skill_info, resolve_skill_paths, scan_for_skills, write_assistant_rule,
@@ -795,4 +795,47 @@ fn canonicalize_builtin_skill_name_aliases_legacy_names() {
         canonicalize_builtin_skill_name("totally-unrelated"),
         "totally-unrelated"
     );
+}
+
+
+#[tokio::test]
+async fn read_builtin_skill_resolves_legacy_alias() {
+    let tmp = TempDir::new().unwrap();
+    let builtin_dir = tmp.path().join("builtin-skills");
+    let auto_dir = builtin_dir.join("auto-inject");
+    std::fs::create_dir_all(&auto_dir).unwrap();
+    let skill_dir = auto_dir.join("badouwork-config");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: badouwork-config\ndescription: test\n---\nbody\n",
+    )
+    .unwrap();
+
+    unsafe {
+        std::env::set_var(BUILTIN_SKILLS_ENV_VAR, &builtin_dir);
+    }
+
+    let paths = resolve_skill_paths(
+        &tmp.path().join("app-resource"),
+        &tmp.path().join("data"),
+    );
+
+    let canonical = read_builtin_skill(&paths, "auto-inject/badouwork-config/SKILL.md")
+        .await
+        .unwrap();
+    let legacy = read_builtin_skill(&paths, "auto-inject/aionui-config/SKILL.md")
+        .await
+        .unwrap();
+
+    assert_eq!(legacy, canonical);
+    let expected_marker = "name: badouwork";
+    assert!(
+        canonical.contains(expected_marker),
+        "unexpected body: {canonical}"
+    );
+
+    unsafe {
+        std::env::remove_var(BUILTIN_SKILLS_ENV_VAR);
+    }
 }
