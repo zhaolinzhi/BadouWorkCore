@@ -764,3 +764,35 @@ async fn security_assistant_crud_path_traversal_locale() {
     assert!(read_assistant_skill(&paths, "valid", Some("a/b")).await.is_err());
     assert!(write_assistant_skill(&paths, "valid", "x", Some("a\\b")).await.is_err());
 }
+
+
+#[test]
+fn canonicalize_builtin_skill_name_aliases_legacy_names() {
+    use aionui_extension::skill_service::canonicalize_builtin_skill_name;
+    assert_eq!(
+        canonicalize_builtin_skill_name("aionui-config"),
+        "badouwork-config"
+    );
+    assert_eq!(
+        canonicalize_builtin_skill_name("aionui-troubleshooting"),
+        "badouwork-troubleshooting"
+    );
+    assert_eq!(
+        canonicalize_builtin_skill_name("aionui-webui-public"),
+        "badouwork-webui-public"
+    );
+    assert_eq!(
+        canonicalize_builtin_skill_name("aionui-webui-setup"),
+        "badouwork-webui-setup"
+    );
+    // Idempotent on already-canonical names.
+    assert_eq!(
+        canonicalize_builtin_skill_name("badouwork-config"),
+        "badouwork-config"
+    );
+    // Pass-through on unknown names.
+    assert_eq!(
+        canonicalize_builtin_skill_name("totally-unrelated"),
+        "totally-unrelated"
+    );
+}

@@ -31,6 +31,29 @@ const MAX_SKILL_IMPORT_TOTAL_BYTES: u64 = 200 * 1024 * 1024;
 const IMPORT_STAGING_PREFIX: &str = ".import-staging-";
 const DEFAULT_USER_ID: &str = "system_default_user";
 
+/// Legacy `aionui-*` builtin-skill names mapped to their `badouwork-*` replacements.
+///
+/// Applied at every point that joins a caller-supplied name onto the built-in
+/// skills directory so user-supplied legacy names (cron jobs, saved references,
+/// paste-from-old-docs) keep resolving correctly. The `list_available_skills`
+/// path is exempt: it emits `name:` from SKILL.md frontmatter, which we already
+/// rename, so the new names surface naturally without aliasing.
+const BUILTIN_SKILL_ALIASES: &[(&str, &str)] = &[
+    ("aionui-config", "badouwork-config"),
+    ("aionui-troubleshooting", "badouwork-troubleshooting"),
+    ("aionui-webui-public", "badouwork-webui-public"),
+    ("aionui-webui-setup", "badouwork-webui-setup"),
+];
+
+/// If `name` is a legacy alias, return the canonical name; otherwise pass through.
+pub fn canonicalize_builtin_skill_name(name: &str) -> &str {
+    BUILTIN_SKILL_ALIASES
+        .iter()
+        .find(|(from, _)| *from == name)
+        .map(|(_, to)| *to)
+        .unwrap_or(name)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SkillImportLimits {
     pub max_file_bytes: u64,
