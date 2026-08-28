@@ -20,7 +20,7 @@ content, use the user's language.
 3. Use named diagnose commands first. Use `diagnose http get` only when no named
    command covers the diagnostic need.
 4. Treat every command as read-only. To change AionUi configuration, use the
-   separate `aionui-config` skill.
+   separate `badouwork-config` skill.
 5. Never print raw provider, MCP header, token, password, or secret values. The
    CLI redacts known secret fields by default, but summarize sensitive findings
    carefully.
@@ -238,8 +238,8 @@ Constraints:
 ## Safety Notes
 
 - This skill diagnoses; it does not repair.
-- For configuration changes, switch to `aionui-config`.
+- For configuration changes, switch to `badouwork-config`.
 - For scheduled task creation or updates, use the `cron` skill or
-  `aionui-config` cron commands.
+  `badouwork-config` cron commands.
 - When reporting results, explain evidence and uncertainty: "suspected stuck"
   after one snapshot, "confirmed stuck" only after repeated unchanged snapshots.
