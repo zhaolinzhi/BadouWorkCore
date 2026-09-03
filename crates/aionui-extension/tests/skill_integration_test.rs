@@ -626,7 +626,7 @@ async fn cp4_enable_skills_market() {
 
     let paths = mgr.get_custom_external_paths().await;
     assert_eq!(paths.len(), 1);
-    assert_eq!(paths[0].name, "aionui-skills");
+    assert_eq!(paths[0].name, "badouwork-skills");
 }
 
 /// CP-5: Disable skills market.

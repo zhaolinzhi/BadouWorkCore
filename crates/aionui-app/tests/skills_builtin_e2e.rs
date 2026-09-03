@@ -135,8 +135,8 @@ async fn unified_skill_list_includes_auto_inject_entries_from_embedded_corpus() 
         "badouwork-config should be shipped as an auto-inject builtin skill: {names:?}",
     );
     assert!(
-        !names.contains(&"aionui-skills"),
-        "aionui-skills should not be shipped as an auto-inject builtin skill: {names:?}",
+        !names.contains(&"badouwork-skills"),
+        "badouwork-skills should not be shipped as an auto-inject builtin skill: {names:?}",
     );
     for item in auto_items {
         assert!(item["name"].is_string());
