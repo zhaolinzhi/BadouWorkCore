@@ -68,6 +68,10 @@ pub struct AssistantDefinitionRow {
     pub default_disabled_builtin_skill_ids: String,
     pub default_mcps_mode: String,
     pub default_mcp_ids: String,
+    /// Custom override for the upstream aionrs plan-mode system prompt.
+    /// Only consumed when the assistant's `runtime_backend == "aionrs"`.
+    /// `None` means "use upstream default".
+    pub plan_mode_prompt_template: Option<String>,
     pub created_at: TimestampMs,
     pub updated_at: TimestampMs,
     pub deleted_at: Option<TimestampMs>,
@@ -178,6 +182,7 @@ pub struct UpsertAssistantDefinitionParams<'a> {
     pub default_disabled_builtin_skill_ids: &'a str,
     pub default_mcps_mode: &'a str,
     pub default_mcp_ids: &'a str,
+    pub plan_mode_prompt_template: Option<&'a str>,
 }
 
 /// Insert-or-update parameters for `assistant_overlays`.
