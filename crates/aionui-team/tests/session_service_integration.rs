@@ -1608,6 +1608,15 @@ impl IAssistantDefinitionRepository for EmptyAssistantDefinitionRepo {
     ) -> Result<bool, DbError> {
         self.soft_delete(definition_id, deleted_at).await
     }
+
+    async fn update_plan_mode_prompt_template_for_user(
+        &self,
+        _user_id: &str,
+        _assistant_id: &str,
+        _template: Option<String>,
+    ) -> Result<(), DbError> {
+        Ok(())
+    }
 }
 
 struct EmptyAssistantOverlayRepo;
@@ -1750,6 +1759,15 @@ impl IAssistantDefinitionRepository for SingleAssistantDefinitionRepo {
         deleted_at: i64,
     ) -> Result<bool, DbError> {
         self.soft_delete(definition_id, deleted_at).await
+    }
+
+    async fn update_plan_mode_prompt_template_for_user(
+        &self,
+        _user_id: &str,
+        _assistant_id: &str,
+        _template: Option<String>,
+    ) -> Result<(), DbError> {
+        Ok(())
     }
 }
 
@@ -2345,6 +2363,7 @@ fn word_creator_definition() -> AssistantDefinitionRow {
         default_disabled_builtin_skill_ids: "[]".into(),
         default_mcps_mode: "auto".into(),
         default_mcp_ids: "[]".into(),
+        plan_mode_prompt_template: None,
         created_at: 0,
         updated_at: 0,
         deleted_at: None,
@@ -2791,6 +2810,7 @@ async fn tc_create_team_prefers_assistant_avatar_over_backend_logo() {
             default_disabled_builtin_skill_ids: "[]".into(),
             default_mcps_mode: "auto".into(),
             default_mcp_ids: "[]".into(),
+            plan_mode_prompt_template: None,
             created_at: 0,
             updated_at: 0,
             deleted_at: None,
@@ -2861,6 +2881,7 @@ async fn tc_create_team_carries_assistant_identity_into_lead_conversation_extra(
             default_disabled_builtin_skill_ids: "[]".into(),
             default_mcps_mode: "auto".into(),
             default_mcp_ids: "[]".into(),
+            plan_mode_prompt_template: None,
             created_at: 0,
             updated_at: 0,
             deleted_at: None,
@@ -2936,6 +2957,7 @@ async fn tc_create_team_derives_backend_from_assistant_when_backend_missing() {
             default_disabled_builtin_skill_ids: "[]".into(),
             default_mcps_mode: "auto".into(),
             default_mcp_ids: "[]".into(),
+            plan_mode_prompt_template: None,
             created_at: 0,
             updated_at: 0,
             deleted_at: None,
@@ -3022,6 +3044,7 @@ async fn tc_create_team_ignores_requested_backend_when_assistant_id_present() {
             default_disabled_builtin_skill_ids: "[]".into(),
             default_mcps_mode: "auto".into(),
             default_mcp_ids: "[]".into(),
+            plan_mode_prompt_template: None,
             created_at: 0,
             updated_at: 0,
             deleted_at: None,
@@ -3268,6 +3291,7 @@ async fn ta_add_agent_derives_backend_from_assistant_when_backend_missing() {
             default_disabled_builtin_skill_ids: "[]".into(),
             default_mcps_mode: "auto".into(),
             default_mcp_ids: "[]".into(),
+            plan_mode_prompt_template: None,
             created_at: 0,
             updated_at: 0,
             deleted_at: None,
@@ -3362,6 +3386,7 @@ async fn ta_add_agent_ignores_requested_backend_when_assistant_id_present() {
             default_disabled_builtin_skill_ids: "[]".into(),
             default_mcps_mode: "auto".into(),
             default_mcp_ids: "[]".into(),
+            plan_mode_prompt_template: None,
             created_at: 0,
             updated_at: 0,
             deleted_at: None,
@@ -5303,6 +5328,7 @@ async fn spawn_agent_in_session_succeeds_without_active_team_run() {
             default_disabled_builtin_skill_ids: "[]".into(),
             default_mcps_mode: "auto".into(),
             default_mcp_ids: "[]".into(),
+            plan_mode_prompt_template: None,
             created_at: 0,
             updated_at: 0,
             deleted_at: None,
