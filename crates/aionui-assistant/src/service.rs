@@ -1095,7 +1095,7 @@ impl AssistantService {
         self.resolve_runtime_backend_for_agent_id(user_id, &resolved_agent_id)
             .await?;
         // plan_mode_prompt_template is aionrs-only; reject early before any
-        // persistence work.
+        // persistence work. resolved_agent_id has already been validated above.
         if req.plan_mode_prompt_template.is_some()
             && self
                 .resolve_runtime_backend_for_agent_id(user_id, &resolved_agent_id)
@@ -1151,8 +1151,15 @@ impl AssistantService {
         // plan_mode_prompt_template is aionrs-only. Validate up-front so all
         // source branches see the same error shape.
         if req.plan_mode_prompt_template.is_some() {
+            // The "id" here is the assistant_id; resolve to its definition row
+            // first, then resolve the underlying agent_id to its runtime backend.
+            let definition = self
+                .definition_repo
+                .get_by_assistant_id_for_user(user_id, id)
+                .await?
+                .ok_or_else(|| AssistantError::NotFound(format!("assistant '{id}' not found")))?;
             let runtime_backend = self
-                .resolve_runtime_backend_for_agent_id(user_id, id)
+                .resolve_runtime_backend_for_agent_id(user_id, &definition.agent_id)
                 .await?;
             if runtime_backend != aionui_common::AgentType::Aionrs.serde_name() {
                 return Err(AssistantError::BadRequest(
@@ -1223,15 +1230,9 @@ impl AssistantService {
                 // Built-in whitelist: plan_mode_prompt_template is single-column
                 // override scoped to aionrs agents. Apply after the generic
                 // detail overrides so it survives the rest of the update flow.
+                // The aionrs-backend guard ran up-front in update_for_user; the
+                // definition lookup here is just for the repo method call.
                 if req.plan_mode_prompt_template.is_some() {
-                    let runtime_backend = self
-                        .resolve_runtime_backend_for_agent_id(user_id, id)
-                        .await?;
-                    if runtime_backend != aionui_common::AgentType::Aionrs.serde_name() {
-                        return Err(AssistantError::BadRequest(
-                            "plan_mode_prompt_template is only supported for aionrs agents".into(),
-                        ));
-                    }
                     let normalized = req
                         .plan_mode_prompt_template
                         .as_deref()
@@ -3824,6 +3825,13 @@ mod tests {
         }
     }
 
+    fn mk_builtin_with_agent_ref(id: &str, name: &str, agent_ref: &str) -> BuiltinAssistant {
+        BuiltinAssistant {
+            agent_ref: agent_ref.into(),
+            ..mk_builtin(id, name)
+        }
+    }
+
     fn mk_builtin_with_avatar(id: &str, name: &str, avatar: &str) -> BuiltinAssistant {
         BuiltinAssistant {
             avatar: Some(avatar.into()),
@@ -5101,6 +5109,118 @@ mod tests {
             aionui_api_types::AgentManagementStatus::Online,
             "aionrs assistant should resolve to the online aionrs agent row, not Missing"
         );
+    }
+
+    #[tokio::test]
+    async fn builtin_aionrs_assistant_accepts_plan_mode_prompt_update() {
+        let mut aionrs_row = mk_agent_row(
+            "agent-aionrs",
+            "aionrs",
+            aionui_api_types::AgentManagementStatus::Online,
+        );
+        aionrs_row.backend = None;
+        aionrs_row.agent_type = aionui_common::AgentType::Aionrs;
+
+        let fx = fixture_with_options(FixtureOpts {
+            builtins: vec![mk_builtin_with_agent_ref(
+                "builtin-aionrs",
+                "Aion Assistant",
+                "aionrs",
+            )],
+            agent_rows: vec![aionrs_row],
+            ..Default::default()
+        })
+        .await;
+
+        let req = UpdateAssistantRequest {
+            plan_mode_prompt_template: Some("Prefer 3-step plans.".to_string()),
+            ..Default::default()
+        };
+        fx.service
+            .update("builtin-aionrs", req)
+            .await
+            .expect("update should succeed for builtin aionrs assistant");
+
+        let detail = fx
+            .service
+            .get_detail("builtin-aionrs", None)
+            .await
+            .expect("get_detail");
+        assert_eq!(
+            detail.prompts.plan_mode_prompt_template.as_deref(),
+            Some("Prefer 3-step plans.")
+        );
+
+        // Empty string clears the template (falls back to upstream default).
+        let clear_req = UpdateAssistantRequest {
+            plan_mode_prompt_template: Some(String::new()),
+            ..Default::default()
+        };
+        fx.service
+            .update("builtin-aionrs", clear_req)
+            .await
+            .expect("clear should succeed");
+        let cleared = fx
+            .service
+            .get_detail("builtin-aionrs", None)
+            .await
+            .expect("get_detail after clear");
+        assert!(cleared.prompts.plan_mode_prompt_template.is_none());
+    }
+
+    #[tokio::test]
+    async fn builtin_non_aionrs_assistant_rejects_plan_mode_prompt_update() {
+        // The default mk_builtin uses agent_ref="gemini", which is non-aionrs.
+        // The aionrs-backend guard must reject the plan prompt update.
+        let fx = fixture_with_builtins(vec![mk_builtin("builtin-gemini", "Gemini Assistant")]).await;
+
+        let req = UpdateAssistantRequest {
+            plan_mode_prompt_template: Some("anything".to_string()),
+            ..Default::default()
+        };
+        let err = fx
+            .service
+            .update("builtin-gemini", req)
+            .await
+            .expect_err("must reject");
+        let msg = err.to_string().to_lowercase();
+        assert!(
+            msg.contains("aionrs") || msg.contains("plan"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn builtin_aionrs_assistant_still_rejects_other_field_updates() {
+        let mut aionrs_row = mk_agent_row(
+            "agent-aionrs",
+            "aionrs",
+            aionui_api_types::AgentManagementStatus::Online,
+        );
+        aionrs_row.backend = None;
+        aionrs_row.agent_type = aionui_common::AgentType::Aionrs;
+
+        let fx = fixture_with_options(FixtureOpts {
+            builtins: vec![mk_builtin_with_agent_ref(
+                "builtin-aionrs",
+                "Aion Assistant",
+                "aionrs",
+            )],
+            agent_rows: vec![aionrs_row],
+            ..Default::default()
+        })
+        .await;
+
+        let req = UpdateAssistantRequest {
+            name: Some("hacked".to_string()),
+            ..Default::default()
+        };
+        let err = fx
+            .service
+            .update("builtin-aionrs", req)
+            .await
+            .expect_err("must reject other field updates");
+        assert!(err.to_string().to_lowercase().contains("forbidden"));
     }
 
     #[tokio::test]
