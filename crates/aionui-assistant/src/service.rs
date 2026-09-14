@@ -328,6 +328,7 @@ impl AssistantService {
                     default_disabled_builtin_skill_ids: &default_disabled_builtin_skill_ids,
                     default_mcps_mode: "auto",
                     default_mcp_ids: "[]",
+                    plan_mode_prompt_template: None,
                 })
                 .await
                 .map_err(|e| AssistantError::Internal(format!("upsert builtin definition: {e}")))?;
@@ -655,6 +656,7 @@ impl AssistantService {
                     default_disabled_builtin_skill_ids: "[]".into(),
                     default_mcps_mode: "auto".into(),
                     default_mcp_ids: "[]".into(),
+                    plan_mode_prompt_template: None,
                     created_at: 0,
                     updated_at: 0,
                     deleted_at: None,
@@ -775,6 +777,7 @@ impl AssistantService {
                     default_disabled_builtin_skill_ids: &default_disabled_builtin_skill_ids,
                     default_mcps_mode: "auto",
                     default_mcp_ids: "[]",
+                    plan_mode_prompt_template: None,
                 },
             )
             .await
@@ -1091,6 +1094,18 @@ impl AssistantService {
         };
         self.resolve_runtime_backend_for_agent_id(user_id, &resolved_agent_id)
             .await?;
+        // plan_mode_prompt_template is aionrs-only; reject early before any
+        // persistence work.
+        if req.plan_mode_prompt_template.is_some()
+            && self
+                .resolve_runtime_backend_for_agent_id(user_id, &resolved_agent_id)
+                .await?
+                != aionui_common::AgentType::Aionrs.serde_name()
+        {
+            return Err(AssistantError::BadRequest(
+                "plan_mode_prompt_template is only supported for aionrs agents".into(),
+            ));
+        }
         let avatar = self.normalize_user_avatar_input(user_id, &id, req.avatar.as_deref())?;
         let params = CreateAssistantParams {
             id: &id,
@@ -1133,6 +1148,18 @@ impl AssistantService {
         id: &str,
         req: UpdateAssistantRequest,
     ) -> Result<AssistantResponse, AssistantError> {
+        // plan_mode_prompt_template is aionrs-only. Validate up-front so all
+        // source branches see the same error shape.
+        if req.plan_mode_prompt_template.is_some() {
+            let runtime_backend = self
+                .resolve_runtime_backend_for_agent_id(user_id, id)
+                .await?;
+            if runtime_backend != aionui_common::AgentType::Aionrs.serde_name() {
+                return Err(AssistantError::BadRequest(
+                    "plan_mode_prompt_template is only supported for aionrs agents".into(),
+                ));
+            }
+        }
         match self.classify_source_for_user(user_id, id).await {
             AssistantSource::Builtin => {
                 let detail_overrides = SerializedDetailOverrides::from_update(&req)?;
@@ -1193,6 +1220,29 @@ impl AssistantService {
                 }
                 self.apply_detail_overrides_for_user(user_id, id, detail_overrides, reset_model_and_permission)
                     .await?;
+                // Built-in whitelist: plan_mode_prompt_template is single-column
+                // override scoped to aionrs agents. Apply after the generic
+                // detail overrides so it survives the rest of the update flow.
+                if req.plan_mode_prompt_template.is_some() {
+                    let runtime_backend = self
+                        .resolve_runtime_backend_for_agent_id(user_id, id)
+                        .await?;
+                    if runtime_backend != aionui_common::AgentType::Aionrs.serde_name() {
+                        return Err(AssistantError::BadRequest(
+                            "plan_mode_prompt_template is only supported for aionrs agents".into(),
+                        ));
+                    }
+                    let normalized = req
+                        .plan_mode_prompt_template
+                        .as_deref()
+                        .and_then(normalize_plan_prompt);
+                    self.definition_repo
+                        .update_plan_mode_prompt_template_for_user(user_id, id, normalized)
+                        .await
+                        .map_err(|e| AssistantError::Internal(format!(
+                            "update plan_mode_prompt_template: {e}"
+                        )))?;
+                }
                 let definition = self
                     .definition_repo
                     .get_by_assistant_id_for_user(user_id, id)
@@ -2616,6 +2666,7 @@ impl AssistantService {
             prompts: AssistantPromptsResponse {
                 recommended: decode_str_list(Some(definition.recommended_prompts.as_str()))?,
                 recommended_i18n: decode_list_map(Some(definition.recommended_prompts_i18n.as_str()))?,
+                plan_mode_prompt_template: definition.plan_mode_prompt_template.clone(),
             },
             defaults: AssistantDefaultsResponse {
                 model: AssistantDefaultScalarResponse {
@@ -2922,23 +2973,31 @@ struct SerializedDetailOverrides {
     default_skill_ids: Option<String>,
     default_mcps_mode: Option<String>,
     default_mcp_ids: Option<String>,
+    plan_mode_prompt_template: Option<Option<String>>,
 }
 
 impl SerializedDetailOverrides {
     fn from_create(req: &CreateAssistantRequest) -> Result<Self, AssistantError> {
-        Self::from_parts(
+        let mut result = Self::from_parts(
             req.recommended_prompts.as_deref(),
             req.recommended_prompts_i18n.as_ref(),
             req.defaults.as_ref(),
-        )
+        )?;
+        result.plan_mode_prompt_template = req
+            .plan_mode_prompt_template
+            .as_ref()
+            .map(|v| normalize_plan_prompt(v));
+        Ok(result)
     }
 
     fn from_update(req: &UpdateAssistantRequest) -> Result<Self, AssistantError> {
-        Self::from_parts(
+        let mut result = Self::from_parts(
             req.recommended_prompts.as_deref(),
             req.recommended_prompts_i18n.as_ref(),
             req.defaults.as_ref(),
-        )
+        )?;
+        result.plan_mode_prompt_template = req.plan_mode_prompt_template.as_ref().map(|v| normalize_plan_prompt(v));
+        Ok(result)
     }
 
     fn from_parts(
@@ -2998,6 +3057,20 @@ impl SerializedDetailOverrides {
             || self.default_skill_ids.is_some()
             || self.default_mcps_mode.is_some()
             || self.default_mcp_ids.is_some()
+            || self.plan_mode_prompt_template.is_some()
+    }
+}
+
+/// Normalize a plan-mode prompt PATCH payload.
+///
+/// Empty string after trim means "clear back to upstream default" (NULL).
+/// Whitespace-only strings are also normalized to NULL.
+fn normalize_plan_prompt(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
     }
 }
 
@@ -3050,6 +3123,9 @@ fn apply_detail_patch_to_definition(
     if let Some(value) = overrides.default_mcp_ids.as_deref() {
         definition.default_mcp_ids = value.to_string();
     }
+    if let Some(value) = overrides.plan_mode_prompt_template.clone() {
+        definition.plan_mode_prompt_template = value;
+    }
 }
 
 fn upsert_params_from_definition(definition: &AssistantDefinitionRow) -> UpsertAssistantDefinitionParams<'_> {
@@ -3082,6 +3158,7 @@ fn upsert_params_from_definition(definition: &AssistantDefinitionRow) -> UpsertA
         default_disabled_builtin_skill_ids: &definition.default_disabled_builtin_skill_ids,
         default_mcps_mode: &definition.default_mcps_mode,
         default_mcp_ids: &definition.default_mcp_ids,
+        plan_mode_prompt_template: definition.plan_mode_prompt_template.as_deref(),
     }
 }
 
@@ -3845,6 +3922,7 @@ mod tests {
                 default_disabled_builtin_skill_ids: "[]",
                 default_mcps_mode: "auto",
                 default_mcp_ids: "[]",
+                plan_mode_prompt_template: None,
             })
             .await
             .unwrap();
@@ -3900,6 +3978,7 @@ mod tests {
                 default_disabled_builtin_skill_ids: "[]",
                 default_mcps_mode: "auto",
                 default_mcp_ids: "[]",
+                plan_mode_prompt_template: None,
             })
             .await
             .unwrap();
@@ -4065,6 +4144,7 @@ mod tests {
                 default_disabled_builtin_skill_ids: "[]",
                 default_mcps_mode: "auto",
                 default_mcp_ids: "[]",
+                plan_mode_prompt_template: None,
             })
             .await
             .unwrap();
@@ -4207,6 +4287,7 @@ mod tests {
                 default_disabled_builtin_skill_ids: "[]",
                 default_mcps_mode: "auto",
                 default_mcp_ids: "[]",
+                plan_mode_prompt_template: None,
             })
             .await
             .unwrap();
@@ -6830,6 +6911,7 @@ mod tests {
             recommended_prompts: None,
             recommended_prompts_i18n: None,
             defaults: None,
+            plan_mode_prompt_template: None,
         }
     }
 }
