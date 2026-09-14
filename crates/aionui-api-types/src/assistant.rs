@@ -120,6 +120,10 @@ pub struct AssistantPromptsResponse {
     pub recommended: Vec<String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub recommended_i18n: HashMap<String, Vec<String>>,
+    /// Custom plan-mode system prompt template. Only meaningful for aionrs agents.
+    /// `None` means "use upstream aionrs default".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_mode_prompt_template: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -314,6 +318,12 @@ pub struct CreateAssistantRequest {
     pub recommended_prompts_i18n: Option<HashMap<String, Vec<String>>>,
     #[serde(default)]
     pub defaults: Option<AssistantDefaultsRequest>,
+    /// Custom plan-mode system prompt template.
+    /// Only meaningful when the assistant's agent backend is aionrs.
+    /// `None` (absent) leaves existing value unchanged; an empty string clears
+    /// the template back to the upstream aionrs default.
+    #[serde(default)]
+    pub plan_mode_prompt_template: Option<String>,
 }
 
 /// `PUT /api/assistants/{id}`. All fields optional; partial update semantics.
@@ -349,6 +359,10 @@ pub struct UpdateAssistantRequest {
     pub recommended_prompts_i18n: Option<HashMap<String, Vec<String>>>,
     #[serde(default)]
     pub defaults: Option<AssistantDefaultsRequest>,
+    /// Custom plan-mode system prompt template. Only meaningful for aionrs agents.
+    /// See [`CreateAssistantRequest::plan_mode_prompt_template`] for semantics.
+    #[serde(default)]
+    pub plan_mode_prompt_template: Option<String>,
 }
 
 /// `PATCH /api/assistants/{id}/state`. Upserts `assistant_overrides`.
