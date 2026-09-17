@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.64](https://github.com/zhaolinzhi/BadouWorkCore/compare/v0.1.63...v0.1.64) (2026-09-17)
+
+
+### Features
+
+* **api:** add plan_mode_prompt_template to assistant request/response ([bb363fe](https://github.com/zhaolinzhi/BadouWorkCore/commit/bb363fe9cbfdb5b6f17697939e42987fa943e981))
+* **assistant:** persist plan_mode_prompt_template via service layer ([2f3e691](https://github.com/zhaolinzhi/BadouWorkCore/commit/2f3e6912f86cc09b5cf363c0c5a424dee6874996))
+* **db:** add plan_mode_prompt_template column to assistant_definitions ([e9a8c3c](https://github.com/zhaolinzhi/BadouWorkCore/commit/e9a8c3cf84bd37a2a8ca0ed2276e6b5bbdb459d3))
+* **db:** add plan_mode_prompt_template to row model + upsert params ([791819c](https://github.com/zhaolinzhi/BadouWorkCore/commit/791819c90cc288be04f40d2eb27ef59f4cf3fcbe))
+* **db:** persist plan_mode_prompt_template via repository ([73c70dd](https://github.com/zhaolinzhi/BadouWorkCore/commit/73c70dda58eb97d9379a4a56a26d616965cf3040))
+* **extension:** add builtin skill alias map for aionui-* -&gt; badouwork-* ([a1c7b0e](https://github.com/zhaolinzhi/BadouWorkCore/commit/a1c7b0e36a97a1cc0e013c7e47c65970637742ee))
+* **extension:** apply builtin skill alias at read_builtin_skill and builtin_skill_exists ([0b75fdb](https://github.com/zhaolinzhi/BadouWorkCore/commit/0b75fdb3b1b91c23c8d57831171b085d8855c6ab))
+
+
+### Documentation
+
+* **assistants:** rename skill references in builtin-assistant rules to badouwork-* (en-US, ru-RU, zh-CN) ([b11f559](https://github.com/zhaolinzhi/BadouWorkCore/commit/b11f55931beddb117476d6c057a6a2c8b84df50e))
+* **skills:** rename SKILL.md name: field to badouwork-* ([22bc1b9](https://github.com/zhaolinzhi/BadouWorkCore/commit/22bc1b97e85e923d6595a2150529115e9fb80605))
+* **skills:** replace skill-name cross-references in SKILL.md with badouwork-* ([7bb2583](https://github.com/zhaolinzhi/BadouWorkCore/commit/7bb25830d8eeb0d93e03229bbd5af95e78f0bbe7))
+
 ## [0.1.63](https://github.com/iOfficeAI/AionCore/compare/v0.1.62...v0.1.63) (2026-08-10)
 
 
