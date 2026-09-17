@@ -506,13 +506,14 @@ async fn bindings_are_isolated_per_user() {
     assert_eq!(status, StatusCode::OK);
 
     // Bob (same router, but with bob's CurrentUser) cannot see Alice's binding.
-    let bob_router =
-        project_binding_routes(ProjectRouterState { project: service }).layer(axum::Extension(aionui_auth::CurrentUser {
+    let bob_router = project_binding_routes(ProjectRouterState { project: service }).layer(axum::Extension(
+        aionui_auth::CurrentUser {
             id: bob_user.id.clone(),
             username: "bob".to_owned(),
             user_type: aionui_db::UserType::Local,
             status: aionui_db::UserStatus::Active,
-        }));
+        },
+    ));
     let (status, body) = send(&bob_router, "GET", &binding_url(&project_id), None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["binding"], Value::Null);

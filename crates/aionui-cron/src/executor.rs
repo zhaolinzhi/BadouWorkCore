@@ -1263,8 +1263,15 @@ fn default_temp_workspace_path(
     _job: &CronJob,
     conversation_id: &str,
 ) -> std::path::PathBuf {
+    // Mirror the on-disk label override applied by
+    // `aionui_conversation::conversation_label` so cron-provisioned Aionrs
+    // workspaces land under `badouwork-temp-*` instead of `aionrs-temp-*`.
+    // Keep these two call sites in sync — when changing the label here,
+    // change it there too.
     let label = if *agent_type == AgentType::Acp {
         "acp".to_owned()
+    } else if *agent_type == AgentType::Aionrs {
+        "badouwork".to_owned()
     } else {
         agent_type.serde_name().to_owned()
     };

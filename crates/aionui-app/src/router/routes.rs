@@ -288,8 +288,8 @@ pub fn create_router_with_all_state(services: &AppServices, states: ModuleStates
     // protected by auth middleware. Lives outside project_routes because the
     // URL shape (`/api/project-binding/{id}`) does not nest under
     // `/api/projects/{id}/...`.
-    let project_binding_authenticated = project_binding_routes(states.project)
-        .route_layer(from_fn_with_state(auth_mw_state.clone(), auth_middleware));
+    let project_binding_authenticated =
+        project_binding_routes(states.project).route_layer(from_fn_with_state(auth_mw_state.clone(), auth_middleware));
 
     // MCP routes protected by auth middleware
     let mcp_authenticated =

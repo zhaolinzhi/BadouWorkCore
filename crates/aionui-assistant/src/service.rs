@@ -1233,16 +1233,11 @@ impl AssistantService {
                 // The aionrs-backend guard ran up-front in update_for_user; the
                 // definition lookup here is just for the repo method call.
                 if req.plan_mode_prompt_template.is_some() {
-                    let normalized = req
-                        .plan_mode_prompt_template
-                        .as_deref()
-                        .and_then(normalize_plan_prompt);
+                    let normalized = req.plan_mode_prompt_template.as_deref().and_then(normalize_plan_prompt);
                     self.definition_repo
                         .update_plan_mode_prompt_template_for_user(user_id, id, normalized)
                         .await
-                        .map_err(|e| AssistantError::Internal(format!(
-                            "update plan_mode_prompt_template: {e}"
-                        )))?;
+                        .map_err(|e| AssistantError::Internal(format!("update plan_mode_prompt_template: {e}")))?;
                 }
                 let definition = self
                     .definition_repo
@@ -2984,10 +2979,7 @@ impl SerializedDetailOverrides {
             req.recommended_prompts_i18n.as_ref(),
             req.defaults.as_ref(),
         )?;
-        result.plan_mode_prompt_template = req
-            .plan_mode_prompt_template
-            .as_ref()
-            .map(|v| normalize_plan_prompt(v));
+        result.plan_mode_prompt_template = req.plan_mode_prompt_template.as_ref().map(|v| normalize_plan_prompt(v));
         Ok(result)
     }
 
@@ -5122,11 +5114,7 @@ mod tests {
         aionrs_row.agent_type = aionui_common::AgentType::Aionrs;
 
         let fx = fixture_with_options(FixtureOpts {
-            builtins: vec![mk_builtin_with_agent_ref(
-                "builtin-aionrs",
-                "Aion Assistant",
-                "aionrs",
-            )],
+            builtins: vec![mk_builtin_with_agent_ref("builtin-aionrs", "Aion Assistant", "aionrs")],
             agent_rows: vec![aionrs_row],
             ..Default::default()
         })
@@ -5141,11 +5129,7 @@ mod tests {
             .await
             .expect("update should succeed for builtin aionrs assistant");
 
-        let detail = fx
-            .service
-            .get_detail("builtin-aionrs", None)
-            .await
-            .expect("get_detail");
+        let detail = fx.service.get_detail("builtin-aionrs", None).await.expect("get_detail");
         assert_eq!(
             detail.prompts.plan_mode_prompt_template.as_deref(),
             Some("Prefer 3-step plans.")
@@ -5178,11 +5162,7 @@ mod tests {
             plan_mode_prompt_template: Some("anything".to_string()),
             ..Default::default()
         };
-        let err = fx
-            .service
-            .update("builtin-gemini", req)
-            .await
-            .expect_err("must reject");
+        let err = fx.service.update("builtin-gemini", req).await.expect_err("must reject");
         let msg = err.to_string().to_lowercase();
         assert!(
             msg.contains("aionrs") || msg.contains("plan"),
@@ -5201,11 +5181,7 @@ mod tests {
         aionrs_row.agent_type = aionui_common::AgentType::Aionrs;
 
         let fx = fixture_with_options(FixtureOpts {
-            builtins: vec![mk_builtin_with_agent_ref(
-                "builtin-aionrs",
-                "Aion Assistant",
-                "aionrs",
-            )],
+            builtins: vec![mk_builtin_with_agent_ref("builtin-aionrs", "Aion Assistant", "aionrs")],
             agent_rows: vec![aionrs_row],
             ..Default::default()
         })

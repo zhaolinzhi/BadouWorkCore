@@ -89,7 +89,12 @@ impl AgentType {
     /// Codex conversations use ACP metadata with `backend = "codex"`.
     pub fn native_skills_dirs(&self) -> Option<&'static [&'static str]> {
         match self {
-            AgentType::Aionrs => Some(&[".aionrs/skills"]),
+            // The on-disk prefix for the internal aionrs agent was renamed
+            // from `.aionrs/skills` to `.badouwork/skills`. New workspaces
+            // only get the canonical `.badouwork/skills` directory; legacy
+            // `.aionrs/sessions` / `.aionrs.toml` are still read for
+            // backwards compatibility elsewhere.
+            AgentType::Aionrs => Some(&[".badouwork/skills"]),
             // Verified 2026-07-31 against agy 1.1.8: a skill at
             // `.agents/skills/<name>/SKILL.md` is discovered and executed in
             // headless (`-p`) runs. agy also accepts `.agent/` / `_agents/` /

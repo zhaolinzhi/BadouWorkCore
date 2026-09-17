@@ -533,6 +533,7 @@ async fn get_detail_returns_definition_state_preferences_and_rules() {
             default_disabled_builtin_skill_ids: r#"["todo-tracker"]"#,
             default_mcps_mode: "auto",
             default_mcp_ids: r#"["mcp-legacy"]"#,
+            plan_mode_prompt_template: None,
         })
         .await
         .unwrap();

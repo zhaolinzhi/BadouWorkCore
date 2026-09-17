@@ -8,11 +8,7 @@ use aionui_db::{
 };
 use sqlx::SqlitePool;
 
-fn minimal_params<'a>(
-    id: &'a str,
-    assistant_id: &'a str,
-    agent_id: &'a str,
-) -> UpsertAssistantDefinitionParams<'a> {
+fn minimal_params<'a>(id: &'a str, assistant_id: &'a str, agent_id: &'a str) -> UpsertAssistantDefinitionParams<'a> {
     UpsertAssistantDefinitionParams {
         id,
         assistant_id,
@@ -117,12 +113,10 @@ async fn update_plan_mode_prompt_template_clears_to_none() {
         .await
         .expect("clear");
 
-    let loaded: AssistantDefinitionRow = sqlx::query_as(
-        "SELECT * FROM assistant_definitions WHERE assistant_id = ?",
-    )
-    .bind("asst_1")
-    .fetch_one(&_pool)
-    .await
-    .expect("fetch");
+    let loaded: AssistantDefinitionRow = sqlx::query_as("SELECT * FROM assistant_definitions WHERE assistant_id = ?")
+        .bind("asst_1")
+        .fetch_one(&_pool)
+        .await
+        .expect("fetch");
     assert_eq!(loaded.plan_mode_prompt_template, None);
 }

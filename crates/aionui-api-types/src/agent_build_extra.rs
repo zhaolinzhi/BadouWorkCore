@@ -108,6 +108,12 @@ pub struct AionrsBuildExtra {
     pub system_prompt: Option<String>,
     #[serde(default)]
     pub preset_rules: Option<String>,
+    /// Plan mode system prompt override. Mirrors the assistant definition's
+    /// `plan_mode_prompt_template`; when present and the runtime activates
+    /// plan mode, this text replaces aionrs's built-in `plan_mode_instructions`.
+    /// `None` and the empty string both fall back to the built-in default.
+    #[serde(default)]
+    pub plan_mode_prompt_template: Option<String>,
     #[serde(default)]
     pub skills: Vec<String>,
     #[serde(default)]

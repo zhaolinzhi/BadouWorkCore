@@ -54,6 +54,20 @@ pub struct ModelSettings {
     pub image_input: Option<ModelImageInputCapability>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub openai_api_mode: Option<ModelOpenAiApiMode>,
+    /// Total context window size in tokens. Used by the front-end "Add
+    /// Model" form to pre-fill sensible defaults and must round-trip
+    /// through the provider wire so the edit form can echo it back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_window_size: Option<i64>,
+    /// Maximum input prompt size in tokens. Echoed back to the editor;
+    /// not yet consumed by the aionrs runtime (see
+    /// `BadouWorkUi/docs/superpowers/specs/2026-08-12-model-token-defaults-design.md`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_content_length: Option<i64>,
+    /// Maximum response (output) size in tokens. Echoed back to the
+    /// editor; not yet consumed by the aionrs runtime.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_response_length: Option<i64>,
 }
 
 /// Health status values for a model.
@@ -993,5 +1007,39 @@ mod tests {
         assert_eq!(json["error_kind"], "unauthorized");
         assert_eq!(json["http_status"], 401);
         assert!(json.get("timeout_stage").is_none());
+    }
+
+    // -- ModelSettings --
+
+    #[test]
+    fn model_settings_round_trips_token_limits() {
+        // Regression test: the frontend (BadouWorkUi AddModelModal +
+        // updateModelSettings) sends three per-model token-limit fields
+        // (context_window_size, max_content_length, max_response_length)
+        // inside `model_settings[modelId]`. Before this fix the backend
+        // ModelSettings struct only knew image_input and openai_api_mode,
+        // so serde silently dropped the three on create/update — the page
+        // could not echo them back after a save.
+        let map: HashMap<String, ModelSettings> = serde_json::from_value(json!({
+            "gpt-4o": {
+                "image_input": "supported",
+                "openai_api_mode": "responses",
+                "context_window_size": 128000_i64,
+                "max_content_length": 100000_i64,
+                "max_response_length": 4096_i64
+            }
+        }))
+        .unwrap();
+        let gpt = map.get("gpt-4o").unwrap();
+        assert_eq!(gpt.context_window_size, Some(128000));
+        assert_eq!(gpt.max_content_length, Some(100000));
+        assert_eq!(gpt.max_response_length, Some(4096));
+
+        // Re-serialize and confirm the three new fields survive (skip_serializing_if
+        // only drops when None, so present values must round-trip).
+        let out = serde_json::to_value(&map).unwrap();
+        assert_eq!(out["gpt-4o"]["context_window_size"], 128000);
+        assert_eq!(out["gpt-4o"]["max_content_length"], 100000);
+        assert_eq!(out["gpt-4o"]["max_response_length"], 4096);
     }
 }

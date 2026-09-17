@@ -1491,6 +1491,51 @@ async fn upsert_test_assistant_definition(
     .await;
 }
 
+async fn upsert_test_assistant_definition_with_plan_mode_prompt(
+    repo: &SqliteAssistantDefinitionRepository,
+    definition_id: &str,
+    assistant_id: &str,
+    agent_id: &str,
+    default_model_mode: &str,
+    default_permission_mode: &str,
+    default_thought_level_mode: &str,
+    plan_mode_prompt_template: Option<&str>,
+) {
+    repo.upsert(&UpsertAssistantDefinitionParams {
+        id: definition_id,
+        assistant_id,
+        source: "builtin",
+        owner_type: "system",
+        source_ref: Some(assistant_id),
+        name: assistant_id,
+        name_i18n: "{}",
+        description: Some("desc"),
+        description_i18n: "{}",
+        avatar_type: "emoji",
+        avatar_value: Some("🤖"),
+        agent_id,
+        rule_resource_type: "builtin_asset",
+        rule_resource_ref: Some(assistant_id),
+        recommended_prompts: "[]",
+        recommended_prompts_i18n: "{}",
+        default_model_mode,
+        default_model_value: None,
+        default_permission_mode,
+        default_permission_value: None,
+        default_thought_level_mode,
+        default_thought_level_value: None,
+        default_skills_mode: "auto",
+        default_skill_ids: "[]",
+        custom_skill_names: "[]",
+        default_disabled_builtin_skill_ids: "[]",
+        default_mcps_mode: "auto",
+        default_mcp_ids: "[]",
+        plan_mode_prompt_template,
+    })
+    .await
+    .unwrap();
+}
+
 async fn upsert_test_assistant_definition_with_thought_level(
     repo: &SqliteAssistantDefinitionRepository,
     definition_id: &str,
@@ -1529,6 +1574,7 @@ async fn upsert_test_assistant_definition_with_thought_level(
         default_disabled_builtin_skill_ids: "[]",
         default_mcps_mode: "auto",
         default_mcp_ids: "[]",
+        plan_mode_prompt_template: None,
     })
     .await
     .unwrap();
@@ -6986,6 +7032,7 @@ async fn create_resolves_assistant_snapshot_and_updates_preferences() {
             default_disabled_builtin_skill_ids: "[]",
             default_mcps_mode: "auto",
             default_mcp_ids: "[]",
+            plan_mode_prompt_template: None,
         })
         .await
         .unwrap();
@@ -7158,6 +7205,7 @@ async fn existing_conversation_reads_current_assistant_identity() {
                 default_disabled_builtin_skill_ids: "[]",
                 default_mcps_mode: "auto",
                 default_mcp_ids: "[]",
+                plan_mode_prompt_template: None,
             },
         )
         .await
@@ -7220,6 +7268,7 @@ async fn existing_conversation_reads_current_assistant_identity() {
                 default_disabled_builtin_skill_ids: "[]",
                 default_mcps_mode: "auto",
                 default_mcp_ids: "[]",
+                plan_mode_prompt_template: None,
             },
         )
         .await
@@ -7294,6 +7343,7 @@ async fn create_routes_asset_avatar_in_assistant_identity_through_backend() {
                 default_disabled_builtin_skill_ids: "[]",
                 default_mcps_mode: "auto",
                 default_mcp_ids: "[]",
+                plan_mode_prompt_template: None,
             },
         )
         .await
@@ -7419,6 +7469,66 @@ async fn assistant_backed_aionrs_build_options_include_snapshot_rule_as_preset_r
 }
 
 #[tokio::test]
+async fn assistant_backed_aionrs_build_options_propagate_plan_mode_prompt_template() {
+    // Create-path projection: an assistant whose definition carries a
+    // `plan_mode_prompt_template` must propagate it into `extra.plan_mode_prompt_template`
+    // so the aionrs factory picks it up via AionrsBuildExtra on rebuild.
+    let resolver = Arc::new(FixedSkillResolver { names: vec![] });
+    let dispatcher = Arc::new(StaticAssistantDispatcher {
+        rules: Default::default(),
+    });
+    let (svc, _broadcaster, repo, definition_repo, state_repo, _preference_repo) =
+        make_service_with_assistant_support(resolver, dispatcher).await;
+
+    upsert_test_assistant_definition_with_plan_mode_prompt(
+        &definition_repo,
+        "asstdef_preset_aionrs_plan",
+        "preset-aionrs-plan",
+        "aionrs",
+        "auto",
+        "auto",
+        "auto",
+        Some("Prefer 3-step plans."),
+    )
+    .await;
+    state_repo
+        .upsert(&UpsertAssistantOverlayParams {
+            assistant_definition_id: "asstdef_preset_aionrs_plan",
+            enabled: true,
+            sort_order: 0,
+            agent_id_override: None,
+            last_used_at: None,
+        })
+        .await
+        .unwrap();
+
+    let conv =
+        create_assistant_backed_conversation(&svc, "user_1", Some("aionrs"), "aionrs", "preset-aionrs-plan").await;
+    let row = repo.get("user_1", &conv.id).await.unwrap().unwrap();
+
+    // Persisted extra must carry the plan prompt verbatim.
+    let extra: serde_json::Value = serde_json::from_str(&row.extra).unwrap();
+    assert_eq!(
+        extra.get("plan_mode_prompt_template").and_then(|v| v.as_str()),
+        Some("Prefer 3-step plans.")
+    );
+
+    // And the typed rebuild context must surface it on AionrsBuildExtra.
+    let options = svc.build_task_options(&row).await.unwrap();
+    match options.context.kind {
+        AgentSessionKind::Acp(_) | AgentSessionKind::Antigravity(_) => {
+            panic!("test conversation should build Aionrs options")
+        }
+        AgentSessionKind::Aionrs(ctx) => {
+            assert_eq!(
+                ctx.config.plan_mode_prompt_template.as_deref(),
+                Some("Prefer 3-step plans.")
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn create_prefers_assistant_snapshot_over_legacy_runtime_seed_fields() {
     let resolver = Arc::new(FixedSkillResolver {
         names: vec!["cron".into(), "todo-tracker".into()],
@@ -7460,6 +7570,7 @@ async fn create_prefers_assistant_snapshot_over_legacy_runtime_seed_fields() {
             default_disabled_builtin_skill_ids: "[]",
             default_mcps_mode: "auto",
             default_mcp_ids: "[]",
+            plan_mode_prompt_template: None,
         })
         .await
         .unwrap();
@@ -7631,6 +7742,7 @@ async fn create_does_not_overwrite_preferences_for_fixed_skills_and_mcps() {
             default_disabled_builtin_skill_ids: r#"["todo-tracker"]"#,
             default_mcps_mode: "fixed",
             default_mcp_ids: r#"["mcp-fixed"]"#,
+            plan_mode_prompt_template: None,
         })
         .await
         .unwrap();
@@ -7739,6 +7851,7 @@ async fn create_with_auto_builtin_defaults_without_preferences_keeps_snapshot_va
             default_disabled_builtin_skill_ids: "[]",
             default_mcps_mode: "auto",
             default_mcp_ids: "[]",
+            plan_mode_prompt_template: None,
         })
         .await
         .unwrap();
@@ -7856,7 +7969,11 @@ async fn warmup_restores_skill_links_for_recreated_auto_workspace() {
     .unwrap();
     let resp = svc.create("user-1", req).await.unwrap();
     let workspace = PathBuf::from(resp.extra["workspace"].as_str().unwrap());
-    assert!(workspace.join(".aionrs/skills/cron").is_dir());
+    // New Aionrs workspaces provision `.badouwork/skills` as the canonical
+    // dir and no longer create the legacy `.aionrs/skills` directory —
+    // see `AgentType::native_skills_dirs`.
+    assert!(workspace.join(".badouwork/skills/cron").is_dir());
+    assert!(!workspace.join(".aionrs").exists());
 
     std::fs::remove_dir_all(&workspace).unwrap();
     assert!(!workspace.exists());
@@ -7866,11 +7983,12 @@ async fn warmup_restores_skill_links_for_recreated_auto_workspace() {
         Arc::new(MockTaskManagerWithWorkspace::new(workspace.to_str().unwrap()));
     svc.warmup("user-1", &resp.id, &task_mgr).await.unwrap();
 
-    assert!(workspace.join(".aionrs/skills/cron").is_dir());
+    assert!(workspace.join(".badouwork/skills/cron").is_dir());
+    assert!(!workspace.join(".aionrs").exists());
     let calls = links.lock().unwrap();
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].workspace, workspace);
-    assert_eq!(calls[0].rel_dirs, vec![".aionrs/skills"]);
+    assert_eq!(calls[0].rel_dirs, vec![".badouwork/skills".to_string()]);
     assert_eq!(calls[0].skill_names, vec!["cron"]);
 }
 

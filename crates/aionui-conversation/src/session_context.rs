@@ -644,6 +644,11 @@ fn is_auto_workspace(
     candidate: &Path,
 ) -> bool {
     let expected_leaf = format!("{}-temp-{conversation_id}", conversation_label(agent_type, backend));
+    // `aionrs` workspaces created before the on-disk label was renamed to
+    // `badouwork` still live on user disks. Keep accepting the legacy leaf
+    // so they remain classified as auto-provisioned (and therefore eligible
+    // for cleanup), without forcing an operator-driven rename.
+    let legacy_aionrs_leaf = format!("aionrs-temp-{conversation_id}");
     let Ok(relative) = candidate.strip_prefix(workspace_root.join("conversations")) else {
         return false;
     };
@@ -658,9 +663,12 @@ fn is_auto_workspace(
             && month.chars().all(|ch| ch.is_ascii_digit())
             && day.chars().all(|ch| ch.is_ascii_digit())
     };
+    let leaf_matches = |leaf: &str| -> bool {
+        *leaf == expected_leaf || (*agent_type == AgentType::Aionrs && *leaf == legacy_aionrs_leaf)
+    };
     match parts.as_slice() {
-        [year, month, day, leaf] => dated(year, month, day) && *leaf == expected_leaf,
-        ["users", _user_dir, year, month, day, leaf] => dated(year, month, day) && *leaf == expected_leaf,
+        [year, month, day, leaf] => dated(year, month, day) && leaf_matches(leaf),
+        ["users", _user_dir, year, month, day, leaf] => dated(year, month, day) && leaf_matches(leaf),
         _ => false,
     }
 }
@@ -671,6 +679,9 @@ fn conversation_label(agent_type: &AgentType, backend: Option<&serde_json::Value
         && !s.is_empty()
     {
         return s.clone();
+    }
+    if *agent_type == AgentType::Aionrs {
+        return "badouwork".to_owned();
     }
     agent_type.serde_name().to_owned()
 }
@@ -1238,7 +1249,7 @@ mod tests {
         let context = repos.builder().build(&row).await.unwrap();
         assert!(!context.workspace.is_custom);
         assert!(context.workspace.stored_path.is_empty());
-        assert!(context.workspace.path.ends_with("aionrs-temp-conv-1"));
+        assert!(context.workspace.path.ends_with("badouwork-temp-conv-1"));
     }
 
     #[tokio::test]
@@ -1327,6 +1338,65 @@ mod tests {
     }
 
     #[test]
+    fn is_auto_workspace_accepts_legacy_aionrs_prefix() {
+        // The on-disk label for new Aionrs workspaces was renamed from
+        // `aionrs-temp-*` to `badouwork-temp-*`. Historical directories
+        // still carry the old prefix and must keep being classified as
+        // auto-provisioned (so deletion can still recycle them).
+        let root = std::path::Path::new("/w");
+        let now = chrono::Local::now();
+        let dated = |segments: &[&str], leaf: &str| {
+            let mut p = root.join("conversations");
+            for seg in segments {
+                p = p.join(seg);
+            }
+            p.join(leaf)
+        };
+        let auto =
+            |candidate: &std::path::Path| is_auto_workspace(root, "conv-legacy", &AgentType::Aionrs, None, candidate);
+
+        let legacy_today = dated(
+            &[
+                "users",
+                "system_default_user",
+                &format!("{:04}", now.year()),
+                &format!("{:02}", now.month()),
+                &format!("{:02}", now.day()),
+            ],
+            "aionrs-temp-conv-legacy",
+        );
+        assert!(
+            auto(&legacy_today),
+            "legacy `aionrs-temp-*` leaves must still be classified as auto"
+        );
+
+        let new_today = dated(
+            &[
+                "users",
+                "system_default_user",
+                &format!("{:04}", now.year()),
+                &format!("{:02}", now.month()),
+                &format!("{:02}", now.day()),
+            ],
+            "badouwork-temp-conv-legacy",
+        );
+        assert!(
+            auto(&new_today),
+            "new `badouwork-temp-*` leaves must be classified as auto"
+        );
+
+        // Negative: a different agent type's legacy `aionrs-temp-*` leaf must
+        // NOT match — the prefix fallback is intentionally scoped to Aionrs.
+        let other_agent = dated(&["users", "d", "2020", "01", "02"], "aionrs-temp-conv-legacy");
+        let auto_acp =
+            |candidate: &std::path::Path| is_auto_workspace(root, "conv-legacy", &AgentType::Acp, None, candidate);
+        assert!(
+            !auto_acp(&other_agent),
+            "the `aionrs-temp-*` legacy fallback must not bleed into other agent types"
+        );
+    }
+
+    #[test]
     fn workspace_validation_failure_logs_redacted_runtime_check() {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -1404,6 +1474,34 @@ mod tests {
             Some(aionrs_seed("auto", Some("yolo"))),
         );
         assert_eq!(ctx.config.session_mode.as_deref(), Some("yolo"));
+    }
+
+    #[test]
+    fn aionrs_extra_plan_mode_prompt_template_round_trips_to_build_extra() {
+        // Spec contract (docs/plan-mode-override.md): the create-path
+        // projection writes `extra.plan_mode_prompt_template`, and the
+        // rebuild parse into AionrsBuildExtra must round-trip the value
+        // verbatim so the factory sees the assistant's template.
+        let prompt_row = row(
+            "aionrs",
+            serde_json::json!({ "plan_mode_prompt_template": "Prefer 3-step plans." }),
+            None,
+        );
+        let ctx = build_aionrs_context(
+            &prompt_row,
+            serde_json::json!({ "plan_mode_prompt_template": "Prefer 3-step plans." }),
+            None,
+            None,
+        );
+        assert_eq!(
+            ctx.config.plan_mode_prompt_template.as_deref(),
+            Some("Prefer 3-step plans.")
+        );
+
+        // Absence must not break parsing — AionrsBuildExtra defaults to None.
+        let empty_row = row("aionrs", serde_json::json!({}), None);
+        let ctx = build_aionrs_context(&empty_row, serde_json::json!({}), None, None);
+        assert!(ctx.config.plan_mode_prompt_template.is_none());
     }
 
     #[test]

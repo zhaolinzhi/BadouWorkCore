@@ -29,6 +29,7 @@ fn make_test_config() -> AionrsResolvedConfig {
         model: "claude-sonnet-4-20250514".into(),
         base_url: None,
         system_prompt: None,
+        plan_mode_prompt: None,
         max_tokens: None,
         max_turns: None,
         max_tool_call_malformed_turns: None,
@@ -57,9 +58,11 @@ fn make_cli_args(project_dir: PathBuf, provider: &str, model: &str) -> CliArgs {
         max_tool_call_malformed_turns: None,
         max_tool_call_failure_turns: None,
         system_prompt: None,
+        plan_mode_prompt: None,
         profile: None,
         auto_approve: false,
         project_dir: Some(project_dir),
+        project_config_path: None,
     }
 }
 
@@ -115,6 +118,23 @@ max_tokens = 42
         embedded.compat.default_max_tokens_for_model("claude-sonnet-4-6"),
         Some(128_000)
     );
+}
+
+#[test]
+fn resolve_aionui_config_propagates_plan_mode_prompt_to_config_plan() {
+    // Spec contract (docs/plan-mode-override.md): `CliArgs.plan_mode_prompt`
+    // must win over `[plan].prompt` TOML. We assert the CLI path here
+    // because that is the surface AionrsAgentManager writes; TOML
+    // precedence is exercised in the upstream aion-config tests.
+    let project = tempfile::tempdir().unwrap();
+    let prompt_text = "Custom plan mode instructions for testing.";
+    let cli_args = CliArgs {
+        plan_mode_prompt: Some(prompt_text.to_owned()),
+        ..make_cli_args(project.path().to_path_buf(), "anthropic", "claude-sonnet-4-6")
+    };
+
+    let resolved = resolve_aionui_config(&cli_args).expect("config resolves cleanly");
+    assert_eq!(resolved.plan.prompt.as_deref(), Some(prompt_text));
 }
 
 #[test]

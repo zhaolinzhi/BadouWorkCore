@@ -1224,6 +1224,7 @@ async fn seed_assistant_definition(
             default_disabled_builtin_skill_ids: "[]",
             default_mcps_mode: "auto",
             default_mcp_ids: "[]",
+            plan_mode_prompt_template: None,
         },
     )
     .await

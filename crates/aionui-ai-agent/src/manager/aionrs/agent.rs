@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::future::Future;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -37,6 +37,28 @@ use crate::types::{AionrsResolvedConfig, SendMessageData};
 
 use super::content::build_content_blocks;
 use super::error::{aionrs_engine_error_to_send_error, aionrs_runtime_error_summary};
+
+/// Pick the project-level aionrs config file inside a workspace.
+///
+/// Newer workspaces carry `.badouwork.toml`; older ones still carry
+/// `.aionrs.toml`. Prefer the new name when present so a freshly
+/// renamed workspace wins; otherwise fall back to the legacy name to
+/// keep existing installations working without an operator-driven
+/// migration. Returns `None` when neither file exists — in that case the
+/// upstream `Config::resolve` falls through to its default project path
+/// (currently `./.aionrs.toml` relative to the process CWD), which is
+/// the historical behaviour for workspaces without any config file.
+fn pick_project_config_path(workspace: &Path) -> Option<PathBuf> {
+    let new_name = workspace.join(".badouwork.toml");
+    if new_name.exists() {
+        return Some(new_name);
+    }
+    let legacy = workspace.join(".aionrs.toml");
+    if legacy.exists() {
+        return Some(legacy);
+    }
+    None
+}
 
 fn resolve_aionui_config(cli_args: &CliArgs) -> Result<Config, AgentError> {
     let mut config =
@@ -185,11 +207,13 @@ impl AionrsAgentManager {
             max_tool_call_malformed_turns: config_extra.max_tool_call_malformed_turns,
             max_tool_call_failure_turns: config_extra.max_tool_call_failure_turns,
             system_prompt: config_extra.system_prompt.clone(),
+            plan_mode_prompt: config_extra.plan_mode_prompt.clone(),
             profile: None,
             auto_approve: config_extra.session_mode.as_deref() == Some("yolo"),
             thinking: None,
             thinking_budget: None,
             project_dir: Some(PathBuf::from(&workspace)),
+            project_config_path: pick_project_config_path(Path::new(&workspace)),
         };
 
         let mut config = resolve_aionui_config(&cli_args)?;
@@ -199,6 +223,37 @@ impl AionrsAgentManager {
         config.session.enabled = true;
         config.session.directory = config_extra.session_directory.to_string_lossy().into_owned();
         config.compat.image_input = Some(image_input_capability);
+
+        // Surface the resolved plan-mode prompt so operators can confirm
+        // the assistant override actually reached aionrs. The full system
+        // prompt (including the plan-mode section) is built inside aionrs's
+        // engine; this log line shows the wire value `config.plan.prompt`
+        // that aionrs will inject when plan mode is active.
+        //
+        // Counts go to info so the operator sees a session-level signal in
+        // production; the actual text stays at debug to honor the
+        // "no prompt payloads in production-visible logs" guidance.
+        match &config.plan.prompt {
+            Some(text) => info!(
+                conversation_id = %conversation_id,
+                plan_prompt_bytes = text.len(),
+                "aionrs plan-mode prompt override active; verify aionrs injects this when EnterPlanMode fires"
+            ),
+            None => debug!(
+                conversation_id = %conversation_id,
+                "aionrs plan-mode prompt not overridden; engine will use built-in plan_mode_instructions"
+            ),
+        }
+        // Preview text at debug only — never at info. Operators needing
+        // this turn on RUST_LOG=debug or run with --dump-prompts.
+        if let Some(text) = config.plan.prompt.as_deref() {
+            let preview: String = text.chars().take(200).collect();
+            debug!(
+                conversation_id = %conversation_id,
+                plan_prompt_preview = %preview,
+                "aionrs resolved plan-mode prompt preview"
+            );
+        }
 
         if let Some(mode) = config_extra.compat_overrides.openai_api_mode {
             config.compat.transport.openai_api_mode = Some(mode);
