@@ -140,6 +140,11 @@ pub struct AionrsResolvedConfig {
     pub base_url: Option<String>,
     /// System prompt override.
     pub system_prompt: Option<String>,
+    /// Plan mode system prompt override. Sourced from the assistant's
+    /// `plan_mode_prompt_template`; when `Some`, replaces aionrs's built-in
+    /// `plan_mode_instructions()` while plan mode is active. `None` keeps the
+    /// upstream default.
+    pub plan_mode_prompt: Option<String>,
     /// Internal response cap for specialized flows such as provider health probes.
     /// Normal AionUi conversations leave this unset.
     pub max_tokens: Option<u32>,

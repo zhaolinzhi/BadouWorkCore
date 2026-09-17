@@ -151,32 +151,7 @@ pub(super) async fn build(
                 );
                 Some(session)
             }
-            Err(_) => {
-                // Fallback: old architecture stored sessions inside the workspace
-                let legacy_dir = std::path::Path::new(&ctx.workspace).join(".aionrs/sessions");
-                let legacy_mgr = SessionManager::new(legacy_dir.clone(), 100);
-                match legacy_mgr.load(&ctx.conversation_id) {
-                    Ok(mut session) => {
-                        let dropped = sanitize_session_messages(&mut session.messages);
-                        info!(
-                            conversation_id = %ctx.conversation_id,
-                            session_id = %session.id,
-                            message_count = session.messages.len(),
-                            sanitized_dropped = dropped,
-                            "Loaded legacy aionrs session from workspace"
-                        );
-                        Some(session)
-                    }
-                    Err(e) => {
-                        debug!(
-                            conversation_id = %ctx.conversation_id,
-                            error = %e,
-                            "No existing aionrs session found, starting fresh"
-                        );
-                        None
-                    }
-                }
-            }
+            Err(_) => load_workspace_session(&ctx.workspace, &ctx.conversation_id),
         }
     };
 
@@ -186,6 +161,7 @@ pub(super) async fn build(
         model: model_id,
         base_url,
         system_prompt: overrides.system_prompt,
+        plan_mode_prompt: overrides.plan_mode_prompt_template.clone(),
         max_tokens: None,
         max_turns: overrides.max_turns,
         max_tool_call_malformed_turns: overrides.max_tool_call_malformed_turns,
@@ -227,6 +203,42 @@ pub(super) async fn build(
                     conversation_id = %ctx.conversation_id,
                     error = %error,
                     "DEV prompt dump failed"
+                );
+            }
+        }
+    }
+
+    // Dev dump for the resolved plan-mode prompt so operators can confirm
+    // the assistant's `plan_mode_prompt_template` reached the aionrs
+    // session (the full merged system prompt is built inside aionrs's
+    // engine and is not visible on this side).
+    if let Some(plan_prompt) = config.plan_mode_prompt.as_deref()
+        && let Some(dump_dir) = crate::dev_prompt_dump::dump_dir_for_data_dir(&deps.data_dir, deps.dump_prompts)
+    {
+        match crate::dev_prompt_dump::dump_prompt(
+            &dump_dir,
+            crate::dev_prompt_dump::PromptDump {
+                kind: "aionrs-plan-mode-prompt",
+                backend: None,
+                conversation_id: &ctx.conversation_id,
+                session_id: None,
+                msg_id: None,
+                turn_id: None,
+                prompt: plan_prompt,
+            },
+        ) {
+            Ok(path) => {
+                debug!(
+                    conversation_id = %ctx.conversation_id,
+                    path = %path.display(),
+                    "DEV plan-mode prompt dump written"
+                );
+            }
+            Err(error) => {
+                warn!(
+                    conversation_id = %ctx.conversation_id,
+                    error = %error,
+                    "DEV plan-mode prompt dump failed"
                 );
             }
         }
@@ -751,6 +763,44 @@ fn team_mcp_to_config(cfg: &TeamMcpStdioConfig) -> HashMap<String, McpServerConf
     };
 
     HashMap::from([(TEAM_MCP_SERVER_NAME.to_owned(), server)])
+}
+
+/// Try to load an existing aionrs session from one of the workspace-local
+/// fallback directories.
+///
+/// Older architectures stored aionrs session state inside the workspace
+/// itself. The on-disk prefix was renamed from `.aionrs/sessions` to
+/// `.badouwork/sessions`; both are still consulted in case either
+/// survives from before the rename. The canonical store at
+/// `<data_dir>/aionrs-sessions/` is tried first by the caller and is
+/// unaffected by this helper.
+fn load_workspace_session(workspace: &str, conversation_id: &str) -> Option<aion_agent::session::Session> {
+    let workspace_path = std::path::Path::new(workspace);
+    for (rel_dir, label) in [(".badouwork/sessions", "renamed"), (".aionrs/sessions", "legacy")] {
+        let dir = workspace_path.join(rel_dir);
+        let mgr = SessionManager::new(dir.clone(), 100);
+        match mgr.load(conversation_id) {
+            Ok(mut session) => {
+                let dropped = sanitize_session_messages(&mut session.messages);
+                info!(
+                    conversation_id = %conversation_id,
+                    session_dir = %dir.display(),
+                    source = %label,
+                    session_id = %session.id,
+                    message_count = session.messages.len(),
+                    sanitized_dropped = dropped,
+                    "Loaded workspace aionrs session for resume"
+                );
+                return Some(session);
+            }
+            Err(_) => continue,
+        }
+    }
+    debug!(
+        conversation_id = %conversation_id,
+        "No existing aionrs session found, starting fresh"
+    );
+    None
 }
 
 #[cfg(test)]
@@ -1947,5 +1997,26 @@ mod tests {
         }
 
         assert_eq!(overrides.system_prompt.as_deref(), Some("Be concise."));
+    }
+
+    #[test]
+    fn aionrs_build_extra_round_trips_plan_mode_prompt_template() {
+        // Field carries verbatim through serde so the create-path
+        // projection in conversation service lands in `extra.plan_mode_prompt_template`
+        // and the AionrsAgentManager CliArgs bridge picks it up unchanged.
+        let payload = serde_json::json!({
+            "system_prompt": "Be concise.",
+            "plan_mode_prompt_template": "Prefer 3-step plans.",
+        });
+        let parsed: AionrsBuildExtra = serde_json::from_value(payload).expect("parses");
+        assert_eq!(
+            parsed.plan_mode_prompt_template.as_deref(),
+            Some("Prefer 3-step plans.")
+        );
+        let reserialized = serde_json::to_value(&parsed).expect("serializes");
+        assert_eq!(
+            reserialized["plan_mode_prompt_template"],
+            serde_json::Value::String("Prefer 3-step plans.".into())
+        );
     }
 }

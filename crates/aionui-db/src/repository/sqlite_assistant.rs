@@ -306,9 +306,9 @@ impl SqliteAssistantDefinitionRepository {
                 default_permission_mode, default_permission_value,
                 default_thought_level_mode, default_thought_level_value,
                 default_skills_mode, default_skill_ids, custom_skill_names, default_disabled_builtin_skill_ids,
-                default_mcps_mode, default_mcp_ids,
+                default_mcps_mode, default_mcp_ids, plan_mode_prompt_template,
                 created_at, updated_at, deleted_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
             ON CONFLICT(id) DO UPDATE SET
                 assistant_id = excluded.assistant_id,
                 source = excluded.source,
@@ -337,6 +337,7 @@ impl SqliteAssistantDefinitionRepository {
                 default_disabled_builtin_skill_ids = excluded.default_disabled_builtin_skill_ids,
                 default_mcps_mode = excluded.default_mcps_mode,
                 default_mcp_ids = excluded.default_mcp_ids,
+                plan_mode_prompt_template = excluded.plan_mode_prompt_template,
                 updated_at = excluded.updated_at,
                 deleted_at = NULL
              WHERE assistant_definitions.user_id IS excluded.user_id",
@@ -370,6 +371,7 @@ impl SqliteAssistantDefinitionRepository {
         .bind(params.default_disabled_builtin_skill_ids)
         .bind(params.default_mcps_mode)
         .bind(params.default_mcp_ids)
+        .bind(params.plan_mode_prompt_template)
         .bind(now)
         .bind(now)
         .execute(&self.pool)
@@ -833,6 +835,35 @@ impl IAssistantDefinitionRepository for SqliteAssistantDefinitionRepository {
         .await?;
         Ok(result.rows_affected() > 0)
     }
+
+    async fn update_plan_mode_prompt_template_for_user(
+        &self,
+        user_id: &str,
+        assistant_id: &str,
+        template: Option<String>,
+    ) -> Result<(), DbError> {
+        let result = sqlx::query(
+            "UPDATE assistant_definitions
+                SET plan_mode_prompt_template = ?,
+                    updated_at = ?
+              WHERE assistant_id = ?
+                AND deleted_at IS NULL
+                AND (user_id = ? OR user_id IS NULL OR owner_type = 'builtin')",
+        )
+        .bind(&template)
+        .bind(now_ms())
+        .bind(assistant_id)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(DbError::NotFound(format!(
+                "assistant definition for assistant_id '{assistant_id}' not found or not owned by user '{user_id}'"
+            )));
+        }
+        Ok(())
+    }
 }
 
 #[async_trait::async_trait]
@@ -1115,6 +1146,7 @@ mod tests {
             default_disabled_builtin_skill_ids: r#"["todo-tracker"]"#,
             default_mcps_mode: "auto",
             default_mcp_ids: "[]",
+            plan_mode_prompt_template: None,
         }
     }
 

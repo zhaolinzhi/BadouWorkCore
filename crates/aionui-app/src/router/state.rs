@@ -898,9 +898,8 @@ pub fn build_shell_state(services: &AppServices) -> ShellRouterState {
 
 pub fn build_notebook_state(services: &AppServices) -> NotebookRouterState {
     let workspace_root = services.data_dir.join("notebooks");
-    let workspace = Arc::new(
-        WorkspaceConfig::resolve(&workspace_root).expect("notebook workspace must initialize under data_dir"),
-    );
+    let workspace =
+        Arc::new(WorkspaceConfig::resolve(&workspace_root).expect("notebook workspace must initialize under data_dir"));
     let file_store = Arc::new(MdFileStore::new(workspace.notes_dir.clone()));
     let pool = services.database.pool().clone();
     let notebook_repo: Arc<dyn aionui_db::INotebookRepository> =
@@ -1166,6 +1165,7 @@ mod tests {
             default_disabled_builtin_skill_ids: "[]",
             default_mcps_mode: "auto",
             default_mcp_ids: "[]",
+            plan_mode_prompt_template: None,
         }
     }
 

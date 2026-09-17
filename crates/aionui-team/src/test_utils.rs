@@ -1328,6 +1328,15 @@ pub(crate) mod workspace_harness {
         ) -> Result<bool, DbError> {
             self.soft_delete(definition_id, deleted_at).await
         }
+
+        async fn update_plan_mode_prompt_template_for_user(
+            &self,
+            _user_id: &str,
+            _assistant_id: &str,
+            _template: Option<String>,
+        ) -> Result<(), DbError> {
+            Ok(())
+        }
     }
 
     struct EmptyAssistantOverlayRepo;

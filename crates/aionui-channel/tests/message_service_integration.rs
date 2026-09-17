@@ -217,6 +217,7 @@ fn bare_assistant_definition_params<'a>(
         default_disabled_builtin_skill_ids: "[]",
         default_mcps_mode: "auto",
         default_mcp_ids: "[]",
+        plan_mode_prompt_template: None,
     }
 }
 

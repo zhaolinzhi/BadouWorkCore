@@ -96,13 +96,13 @@ impl ExternalPathsManager {
         Ok(())
     }
 
-    /// Enable the aionui skills market by adding it to external paths.
+    /// Enable the BadouWork skills market by adding it to external paths.
     pub async fn enable_skills_market(&self) -> Result<(), ExtensionError> {
         self.add_custom_external_path(SKILLS_MARKET_NAME, SKILLS_MARKET_PATH)
             .await
     }
 
-    /// Disable the aionui skills market by removing it from external paths.
+    /// Disable the BadouWork skills market by removing it from external paths.
     pub async fn disable_skills_market(&self) -> Result<(), ExtensionError> {
         self.remove_custom_external_path(SKILLS_MARKET_PATH).await
     }

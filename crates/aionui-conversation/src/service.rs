@@ -149,6 +149,12 @@ struct AssistantSnapshot {
     #[serde(default = "default_assistant_snapshot_agent_type")]
     agent_type: AgentType,
     rules: AssistantSnapshotRules,
+    /// Plan mode system prompt override carried from the assistant definition.
+    /// Static config (unlike the runtime-selected permission seed), so it
+    /// only needs to survive the create-time `extra` projection; rebuilds
+    /// re-read it from `conversations.extra` via `AionrsBuildExtra`.
+    #[serde(default)]
+    plan_mode_prompt_template: Option<String>,
     #[serde(default)]
     default_modes: AssistantSnapshotDefaultModes,
     resolved_defaults: AssistantSnapshotResolvedDefaults,
@@ -1119,6 +1125,23 @@ impl ConversationService {
                     | AgentType::Nanobot => {}
                 }
             }
+            // Project the assistant's plan mode prompt override into `extra`
+            // so aionrs sessions inherit it via AionrsBuildExtra on rebuild.
+            // Static config (no runtime mutation), so no seed-style column is
+            // needed in conversation_assistant_snapshots.
+            if effective_type == AgentType::Aionrs {
+                match snapshot.plan_mode_prompt_template.as_deref() {
+                    Some(value) if !value.trim().is_empty() => {
+                        obj.insert(
+                            "plan_mode_prompt_template".to_owned(),
+                            serde_json::Value::String(value.to_owned()),
+                        );
+                    }
+                    _ => {
+                        obj.remove("plan_mode_prompt_template");
+                    }
+                }
+            }
         }
 
         // Consume transient skill-shaping inputs and freeze the initial
@@ -1693,6 +1716,7 @@ impl ConversationService {
                     rules_content
                 },
             },
+            plan_mode_prompt_template: definition.plan_mode_prompt_template.clone(),
             default_modes: AssistantSnapshotDefaultModes {
                 model: definition.default_model_mode.clone(),
                 permission: definition.default_permission_mode.clone(),
@@ -4362,15 +4386,26 @@ fn map_create_workspace_validation_error(error: WorkspacePathValidationError) ->
 /// Compute the label used in auto-provisioned workspace directory names.
 ///
 /// For ACP conversations the label is the vendor string from
-/// `extra.backend` (e.g. `"claude"`); otherwise the `AgentType` serde
-/// name (e.g. `"aionrs"`). Falls back to the agent type's serde name
-/// when the backend field is missing or not a string.
+/// `extra.backend` (e.g. `"claude"`); for the internal `aionrs` agent it
+/// is `"badouwork"` (the on-disk folder prefix shown to operators); for
+/// every other type it is the `AgentType` serde name. Falls back to the
+/// agent type's serde name when the ACP backend field is missing or not
+/// a string.
+///
+/// Note: the `badouwork` override is intentionally narrower than the DB
+/// / wire value `aionrs` so renaming the on-disk prefix does not require
+/// a schema migration. Existing `aionrs-temp-*` workspaces on disk are
+/// still recognised as auto-provisioned — see `is_auto_workspace` in
+/// `session_context.rs`.
 fn conversation_label(agent_type: &AgentType, backend: Option<&serde_json::Value>) -> String {
     if *agent_type == AgentType::Acp
         && let Some(serde_json::Value::String(s)) = backend
         && !s.is_empty()
     {
         return s.clone();
+    }
+    if *agent_type == AgentType::Aionrs {
+        return "badouwork".to_owned();
     }
     agent_type.serde_name().to_owned()
 }

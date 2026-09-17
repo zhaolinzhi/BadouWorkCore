@@ -179,6 +179,16 @@ pub trait IAssistantDefinitionRepository: Send + Sync {
     }
     async fn soft_delete(&self, id: &str, deleted_at: i64) -> Result<bool, DbError>;
     async fn soft_delete_for_user(&self, user_id: &str, id: &str, deleted_at: i64) -> Result<bool, DbError>;
+
+    /// Update only the `plan_mode_prompt_template` column for a given assistant.
+    /// Pass `None` to clear it back to the upstream default.
+    /// The single-row update is scoped to the owning user (or builtin rows).
+    async fn update_plan_mode_prompt_template_for_user(
+        &self,
+        user_id: &str,
+        assistant_id: &str,
+        template: Option<String>,
+    ) -> Result<(), DbError>;
 }
 
 /// Runtime per-user assistant overlay used by the current app version.

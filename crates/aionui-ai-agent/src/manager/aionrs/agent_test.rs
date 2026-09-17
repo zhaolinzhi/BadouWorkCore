@@ -29,6 +29,7 @@ fn make_test_config() -> AionrsResolvedConfig {
         model: "claude-sonnet-4-20250514".into(),
         base_url: None,
         system_prompt: None,
+        plan_mode_prompt: None,
         max_tokens: None,
         max_turns: None,
         max_tool_call_malformed_turns: None,
@@ -57,9 +58,11 @@ fn make_cli_args(project_dir: PathBuf, provider: &str, model: &str) -> CliArgs {
         max_tool_call_malformed_turns: None,
         max_tool_call_failure_turns: None,
         system_prompt: None,
+        plan_mode_prompt: None,
         profile: None,
         auto_approve: false,
         project_dir: Some(project_dir),
+        project_config_path: None,
     }
 }
 
@@ -118,6 +121,23 @@ max_tokens = 42
 }
 
 #[test]
+fn resolve_aionui_config_propagates_plan_mode_prompt_to_config_plan() {
+    // Spec contract (docs/plan-mode-override.md): `CliArgs.plan_mode_prompt`
+    // must win over `[plan].prompt` TOML. We assert the CLI path here
+    // because that is the surface AionrsAgentManager writes; TOML
+    // precedence is exercised in the upstream aion-config tests.
+    let project = tempfile::tempdir().unwrap();
+    let prompt_text = "Custom plan mode instructions for testing.";
+    let cli_args = CliArgs {
+        plan_mode_prompt: Some(prompt_text.to_owned()),
+        ..make_cli_args(project.path().to_path_buf(), "anthropic", "claude-sonnet-4-6")
+    };
+
+    let resolved = resolve_aionui_config(&cli_args).expect("config resolves cleanly");
+    assert_eq!(resolved.plan.prompt.as_deref(), Some(prompt_text));
+}
+
+#[test]
 fn aionrs_final_input_dump_value_contains_raw_split_input_and_context() {
     let mut mcp_env = HashMap::new();
     mcp_env.insert("TOKEN".to_owned(), "raw-token-value".to_owned());
@@ -144,7 +164,7 @@ fn aionrs_final_input_dump_value_contains_raw_split_input_and_context() {
         base_url: Some("https://example.test/v1".to_owned()),
         system_prompt: Some("assistant rule raw".to_owned()),
         session_mode: Some("yolo".to_owned()),
-        skills: vec!["aionui-config".to_owned()],
+        skills: vec!["badouwork-config".to_owned()],
         mcp_servers,
         runtime_env: vec![("AIONUI_RAW".to_owned(), "raw-env-value".to_owned())],
     };
@@ -168,7 +188,7 @@ fn aionrs_final_input_dump_value_contains_raw_split_input_and_context() {
     assert_eq!(value["resolved_context"]["provider"], "openai");
     assert_eq!(value["resolved_context"]["model"], "gpt-test");
     assert_eq!(value["resolved_context"]["workspace"]["path"], "/workspace");
-    assert_eq!(value["resolved_context"]["skills"][0], "aionui-config");
+    assert_eq!(value["resolved_context"]["skills"][0], "badouwork-config");
     assert_eq!(
         value["resolved_context"]["mcp_servers"]["raw-mcp"]["env"]["TOKEN"],
         "raw-token-value"

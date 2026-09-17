@@ -93,6 +93,7 @@ impl ProviderHealthCheckService {
             model: model_id.to_owned(),
             base_url,
             system_prompt: Some("You are a provider health probe. Reply with exactly OK and do not use tools.".into()),
+            plan_mode_prompt: None,
             max_tokens: Some(HEALTH_CHECK_MAX_TOKENS),
             max_turns: Some(1),
             max_tool_call_malformed_turns: Some(1),
@@ -215,11 +216,13 @@ async fn build_probe_engine(config_extra: AionrsResolvedConfig) -> Result<AgentE
         max_tool_call_malformed_turns: config_extra.max_tool_call_malformed_turns,
         max_tool_call_failure_turns: config_extra.max_tool_call_failure_turns,
         system_prompt: config_extra.system_prompt,
+        plan_mode_prompt: config_extra.plan_mode_prompt,
         profile: None,
         auto_approve: false,
         thinking: None,
         thinking_budget: None,
         project_dir: Some(PathBuf::from(&workspace)),
+        project_config_path: None,
     };
     let mut config =
         Config::resolve(&cli_args).map_err(|error| AgentError::internal(format!("Config resolve failed: {error}")))?;

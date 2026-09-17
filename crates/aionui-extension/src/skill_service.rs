@@ -31,6 +31,29 @@ const MAX_SKILL_IMPORT_TOTAL_BYTES: u64 = 200 * 1024 * 1024;
 const IMPORT_STAGING_PREFIX: &str = ".import-staging-";
 const DEFAULT_USER_ID: &str = "system_default_user";
 
+/// Legacy `aionui-*` builtin-skill names mapped to their `badouwork-*` replacements.
+///
+/// Applied at every point that joins a caller-supplied name onto the built-in
+/// skills directory so user-supplied legacy names (cron jobs, saved references,
+/// paste-from-old-docs) keep resolving correctly. The `list_available_skills`
+/// path is exempt: it emits `name:` from SKILL.md frontmatter, which we already
+/// rename, so the new names surface naturally without aliasing.
+const BUILTIN_SKILL_ALIASES: &[(&str, &str)] = &[
+    ("aionui-config", "badouwork-config"),
+    ("aionui-troubleshooting", "badouwork-troubleshooting"),
+    ("aionui-webui-public", "badouwork-webui-public"),
+    ("aionui-webui-setup", "badouwork-webui-setup"),
+];
+
+/// If `name` is a legacy alias, return the canonical name; otherwise pass through.
+pub fn canonicalize_builtin_skill_name(name: &str) -> &str {
+    BUILTIN_SKILL_ALIASES
+        .iter()
+        .find(|(from, _)| *from == name)
+        .map(|(_, to)| *to)
+        .unwrap_or(name)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SkillImportLimits {
     pub max_file_bytes: u64,
@@ -184,8 +207,33 @@ pub async fn read_builtin_rule(paths: &SkillPaths, file_name: &str) -> Result<St
 /// Rejects `..`-style traversal.
 pub async fn read_builtin_skill(paths: &SkillPaths, file_name: &str) -> Result<String, ExtensionError> {
     validate_builtin_skill_path(file_name)?;
-    let file_path = paths.builtin_skills_dir.join(file_name);
+    let canonicalized = canonicalize_builtin_skill_path(file_name);
+    let file_path = paths.builtin_skills_dir.join(canonicalized);
     read_file_or_empty(&file_path).await
+}
+
+/// Rewrite a caller-supplied builtin-skill path so that legacy `aionui-*`
+/// skill names resolve to their `badouwork-*` replacements.
+///
+/// `file_name` is a relative path like `"aionui-config/SKILL.md"` or
+/// `"auto-inject/aionui-config/SKILL.md"`. The skill directory portion
+/// (everything before the trailing `SKILL.md`) has its final segment
+/// canonicalized; the `auto-inject/` prefix is left alone.
+fn canonicalize_builtin_skill_path(file_name: &str) -> String {
+    if let Some(dir) = file_name.strip_suffix(&format!("/{SKILL_MANIFEST_FILE}")) {
+        if let Some((parent, leaf)) = dir.rsplit_once('/') {
+            format!(
+                "{}/{}/{}",
+                parent,
+                canonicalize_builtin_skill_name(leaf),
+                SKILL_MANIFEST_FILE
+            )
+        } else {
+            format!("{}/{}", canonicalize_builtin_skill_name(dir), SKILL_MANIFEST_FILE)
+        }
+    } else {
+        file_name.to_owned()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1248,6 +1296,7 @@ pub async fn delete_skill_with_repo_for_user(
 /// a top-level opt-in skill or under `auto-inject/`. Consults the
 /// on-disk tree at `paths.builtin_skills_dir`.
 fn builtin_skill_exists(paths: &SkillPaths, skill_name: &str) -> bool {
+    let skill_name = canonicalize_builtin_skill_name(skill_name);
     paths.builtin_skills_dir.join(skill_name).is_dir()
         || paths
             .builtin_skills_dir

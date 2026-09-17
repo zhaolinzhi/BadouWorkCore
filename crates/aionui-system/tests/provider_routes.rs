@@ -338,7 +338,10 @@ async fn create_provider_persists_model_settings() {
     body["model_settings"] = json!({
         "gpt-5.6-sol": {
             "image_input": "supported",
-            "openai_api_mode": "responses"
+            "openai_api_mode": "responses",
+            "context_window_size": 128000_i64,
+            "max_content_length": 100000_i64,
+            "max_response_length": 4096_i64
         }
     });
 
@@ -352,14 +355,16 @@ async fn create_provider_persists_model_settings() {
     let list_app = system_routes(build_state(&db));
     let list_resp = list_app.oneshot(get_request("/api/providers")).await.unwrap();
     let list_json = body_json(list_resp).await;
-    assert_eq!(
-        list_json["data"][0]["model_settings"]["gpt-5.6-sol"]["image_input"],
-        "supported"
-    );
-    assert_eq!(
-        list_json["data"][0]["model_settings"]["gpt-5.6-sol"]["openai_api_mode"],
-        "responses"
-    );
+    let settings = &list_json["data"][0]["model_settings"]["gpt-5.6-sol"];
+    assert_eq!(settings["image_input"], "supported");
+    assert_eq!(settings["openai_api_mode"], "responses");
+    // Regression: the three per-model token-limit fields must round-trip
+    // (BadouWorkUi AddModelModal + updateModelSettings). The frontend
+    // pre-fills these on add and re-reads them on edit; if any are missing
+    // in the response the edit form silently shows an empty input.
+    assert_eq!(settings["context_window_size"], 128000);
+    assert_eq!(settings["max_content_length"], 100000);
+    assert_eq!(settings["max_response_length"], 4096);
 }
 
 #[tokio::test]
@@ -494,7 +499,10 @@ async fn update_provider_replaces_model_settings() {
                 "model_settings": {
                     "gpt-4o": {
                         "image_input": "unsupported",
-                        "openai_api_mode": "chat_completions"
+                        "openai_api_mode": "chat_completions",
+                        "context_window_size": 128000_i64,
+                        "max_content_length": 100000_i64,
+                        "max_response_length": 4096_i64
                     }
                 }
             }),
@@ -504,11 +512,16 @@ async fn update_provider_replaces_model_settings() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let json = body_json(resp).await;
-    assert_eq!(json["data"]["model_settings"]["gpt-4o"]["image_input"], "unsupported");
-    assert_eq!(
-        json["data"]["model_settings"]["gpt-4o"]["openai_api_mode"],
-        "chat_completions"
-    );
+    let settings = &json["data"]["model_settings"]["gpt-4o"];
+    assert_eq!(settings["image_input"], "unsupported");
+    assert_eq!(settings["openai_api_mode"], "chat_completions");
+    // Echo-back regression for the three token-limit fields: the BadouWorkUi
+    // edit modal reads these out of the PUT response to repopulate its
+    // inputs. If the backend drops them, the inputs come back empty after
+    // every save.
+    assert_eq!(settings["context_window_size"], 128000);
+    assert_eq!(settings["max_content_length"], 100000);
+    assert_eq!(settings["max_response_length"], 4096);
 }
 
 #[tokio::test]
