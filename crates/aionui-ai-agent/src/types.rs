@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use aion_config::compat::OpenAiApiMode;
+use aion_config::compat::{OpenAiApiMode, ToolWireShape};
 use aion_types::message::ImageInputCapability;
 use serde::{Deserialize, Serialize};
 
@@ -125,6 +125,11 @@ pub struct AionrsCompatOverrides {
     pub(crate) image_input: Option<ImageInputCapability>,
     pub max_tokens_field: Option<String>,
     pub api_path: Option<String>,
+    /// Explicit `tools` wire-shape override. When `Some`, projected into
+    /// `config.compat.tools.tool_wire_shape` so the aionrs runtime can shape
+    /// outgoing `tools[i]` entries (e.g. flat `{name, parameters}` instead
+    /// of nested `{function: {name, parameters}}`).
+    pub(crate) tool_wire_shape: Option<ToolWireShape>,
 }
 
 /// Fully resolved Aionrs configuration passed to the agent manager.

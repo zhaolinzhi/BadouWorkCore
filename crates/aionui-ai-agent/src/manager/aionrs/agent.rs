@@ -264,6 +264,9 @@ impl AionrsAgentManager {
         if let Some(path) = config_extra.compat_overrides.api_path {
             config.compat.transport.api_path = Some(path);
         }
+        if let Some(shape) = config_extra.compat_overrides.tool_wire_shape {
+            config.compat.tools.tool_wire_shape = Some(shape);
+        }
 
         if !config_extra.extra_mcp_servers.is_empty() {
             config.mcp.servers.extend(config_extra.extra_mcp_servers.clone());

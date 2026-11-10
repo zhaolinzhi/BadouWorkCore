@@ -1,6 +1,6 @@
 //! Version-drift detection for direct-CLI backends.
 //!
-//! None of claude / codex / agy ship with AionUi: each is whatever the user
+//! None of claude / codex / agy ship with BadouWork: each is whatever the user
 //! installed. Every wire contract a backend relies on — stream shapes, control
 //! frames, resume flags — was verified against one release, so a drifting
 //! install has to be visible rather than failing in some unexplained way
@@ -8,7 +8,7 @@
 //!
 //! claude and codex used to be exempt because the app bundled a version-pinned
 //! copy of each. That hid a worse problem: the bundled CLI and the user's own
-//! install could differ, so the same prompt behaved differently in AionUi and
+//! install could differ, so the same prompt behaved differently in BadouWork and
 //! in the user's terminal with nothing on screen explaining why. Bundling is
 //! gone; this module gives all three backends the same treatment.
 //!
@@ -19,8 +19,8 @@
 use std::collections::HashSet;
 use std::sync::{Arc, LazyLock, Mutex};
 
-use aionui_common::CommandSpec;
-use aionui_process::Spawner;
+use BadouWork_common::CommandSpec;
+use BadouWork_process::Spawner;
 
 use crate::event::{LocalizedText, NoticeLevel};
 
@@ -116,18 +116,18 @@ pub fn drift_notice(cli: &str, reported: &str, verified: &str) -> Option<(Notice
         VersionVerdict::Older => Some((
             NoticeLevel::Warning,
             format!(
-                "The installed {cli} is older than the version AionUi verified; \
+                "The installed {cli} is older than the version BadouWork verified; \
                  some features may be missing. Consider upgrading {cli}. \
-                 (installed {reported} / verified by AionUi: {verified})"
+                 (installed {reported} / verified by BadouWork: {verified})"
             ),
             localized(CODE_CLI_VERSION_OLDER),
         )),
         VersionVerdict::Newer => Some((
             NoticeLevel::Info,
             format!(
-                "The installed {cli} is newer than the version AionUi verified. \
+                "The installed {cli} is newer than the version BadouWork verified. \
                  It should still work; report anything that behaves oddly. \
-                 (installed {reported} / verified by AionUi: {verified})"
+                 (installed {reported} / verified by BadouWork: {verified})"
             ),
             localized(CODE_CLI_VERSION_NEWER),
         )),
@@ -181,7 +181,7 @@ pub fn version_drift(cli: &str, reported: &str) -> Option<VersionDrift> {
 /// session.
 const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-async fn read_first_line(stdout: aionui_process::BoxedStdout) -> Option<String> {
+async fn read_first_line(stdout: BadouWork_process::BoxedStdout) -> Option<String> {
     use tokio::io::{AsyncBufReadExt, BufReader};
     let mut lines = BufReader::new(stdout).lines();
     while let Ok(Some(line)) = lines.next_line().await {
