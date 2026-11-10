@@ -68,6 +68,13 @@ aion-protocol = { git = "https://github.com/zhaolinzhi/aionrs.git", tag = "v0.2.
 aion-config = { git = "https://github.com/zhaolinzhi/aionrs.git", tag = "v0.2.10-260908" }
 aion-mcp = { git = "https://github.com/zhaolinzhi/aionrs.git", tag = "v0.2.10-260908" }
 
+#aion-agent = { path = "/Users/zhaolinzhi/Documents/workspaces/2026/aionui/aionrs/crates/aion-agent" }
+#aion-providers = { path = "/Users/zhaolinzhi/Documents/workspaces/2026/aionui/aionrs/crates/aion-providers" }
+#aion-types = { path = "/Users/zhaolinzhi/Documents/workspaces/2026/aionui/aionrs/crates/aion-types" }
+#aion-protocol = { path = "/Users/zhaolinzhi/Documents/workspaces/2026/aionui/aionrs/crates/aion-protocol" }
+#aion-config = { path = "/Users/zhaolinzhi/Documents/workspaces/2026/aionui/aionrs/crates/aion-config" }
+#aion-mcp = { path = "/Users/zhaolinzhi/Documents/workspaces/2026/aionui/aionrs/crates/aion-mcp" }
+
 # Core framework
 tokio = { version = "1", features = ["full"] }
 axum = { version = "0.8", features = ["multipart", "ws"] }

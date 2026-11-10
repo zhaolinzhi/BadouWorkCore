@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use aion_agent::session::SessionManager;
-use aion_config::compat::OpenAiApiMode;
+use aion_config::compat::{OpenAiApiMode, ToolWireShape};
 use aion_config::config::{McpServerConfig, TransportType};
 use aion_types::message::ImageInputCapability;
 use aionui_api_types::{
-    AionrsBuildExtra, ModelImageInputCapability, ModelOpenAiApiMode, ModelSettings, SessionMcpServer,
-    SessionMcpTransport, TEAM_MCP_SERVER_NAME, TeamMcpStdioConfig,
+    AionrsBuildExtra, ModelImageInputCapability, ModelOpenAiApiMode, ModelSettings, ModelToolWireShape,
+    SessionMcpServer, SessionMcpTransport, TEAM_MCP_SERVER_NAME, TeamMcpStdioConfig,
 };
 use aionui_common::ProviderWithModel;
 use aionui_db::IMcpServerRepository;
@@ -110,6 +110,7 @@ pub(super) async fn build(
         model_overrides.openai_api_mode,
     );
     compat_overrides.image_input = model_overrides.image_input;
+    compat_overrides.tool_wire_shape = model_overrides.tool_wire_shape;
 
     if provider == "openai" {
         info!(
@@ -393,6 +394,7 @@ fn rewrite_openai_api_url(url: &str, mode: OpenAiApiMode) -> Option<String> {
 pub(crate) struct ModelCompatOverrides {
     pub(crate) image_input: Option<ImageInputCapability>,
     pub(crate) openai_api_mode: Option<OpenAiApiMode>,
+    pub(crate) tool_wire_shape: Option<ToolWireShape>,
 }
 
 pub(crate) fn resolve_model_compat_overrides(
@@ -414,6 +416,12 @@ pub(crate) fn resolve_model_compat_overrides(
         openai_api_mode: settings.openai_api_mode.map(|value| match value {
             ModelOpenAiApiMode::ChatCompletions => OpenAiApiMode::ChatCompletions,
             ModelOpenAiApiMode::Responses => OpenAiApiMode::Responses,
+        }),
+        tool_wire_shape: settings.tool_wire_shape.map(|value| match value {
+            ModelToolWireShape::Native => ToolWireShape::Native,
+            ModelToolWireShape::OpenAiFunction => ToolWireShape::OpenAiFunction,
+            ModelToolWireShape::OpenAiFlatFunction => ToolWireShape::OpenAiFlatFunction,
+            ModelToolWireShape::AnthropicInputSchema => ToolWireShape::AnthropicInputSchema,
         }),
     })
 }

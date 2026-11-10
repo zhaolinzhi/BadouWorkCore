@@ -81,6 +81,7 @@ impl ProviderHealthCheckService {
             model_overrides.openai_api_mode,
         );
         compat_overrides.image_input = model_overrides.image_input;
+        compat_overrides.tool_wire_shape = model_overrides.tool_wire_shape;
         let bedrock_config = if row.platform == "bedrock" {
             resolve_bedrock_config(row.bedrock_config.as_deref())
         } else {
@@ -242,6 +243,9 @@ async fn build_probe_engine(config_extra: AionrsResolvedConfig) -> Result<AgentE
     }
     if let Some(path) = config_extra.compat_overrides.api_path {
         config.compat.transport.api_path = Some(path);
+    }
+    if let Some(shape) = config_extra.compat_overrides.tool_wire_shape {
+        config.compat.tools.tool_wire_shape = Some(shape);
     }
 
     AgentBootstrap::new(config, workspace, sink)

@@ -45,6 +45,23 @@ pub enum ModelImageInputCapability {
     Unsupported,
 }
 
+/// Explicit `tools` wire-shape override for one model.
+///
+/// Forwarded to the aionrs runtime as `config.compat.tools.tool_wire_shape`.
+/// `Native` lets aionrs pick the default shape for the resolved provider;
+/// `OpenAiFlatFunction` emits tools with a top-level `name` field (e.g. for
+/// the OpenAI Responses API and some OpenAI-compatible gateways that reject
+/// the nested `{function: {name, ...}}` shape with `tools[i].name
+/// MissingParameter`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelToolWireShape {
+    Native,
+    OpenAiFunction,
+    OpenAiFlatFunction,
+    AnthropicInputSchema,
+}
+
 /// User-configured overrides for one model.
 ///
 /// Missing values retain automatic capability and protocol resolution.
@@ -54,6 +71,11 @@ pub struct ModelSettings {
     pub image_input: Option<ModelImageInputCapability>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub openai_api_mode: Option<ModelOpenAiApiMode>,
+    /// Explicit `tools` wire-shape override for this model. Resolved by the
+    /// factory into `aionrs.config.compat.tools.tool_wire_shape` so the
+    /// runtime can emit the expected `tools[i]` shape for the upstream.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_wire_shape: Option<ModelToolWireShape>,
     /// Total context window size in tokens. Used by the front-end "Add
     /// Model" form to pre-fill sensible defaults and must round-trip
     /// through the provider wire so the edit form can echo it back.
