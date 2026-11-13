@@ -82,7 +82,10 @@ pub fn extract_cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
 }
 
 /// Extract the bearer token from the `Authorization` header.
-fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
+///
+/// Returns `None` when the header is absent, is not exactly `Bearer <token>`,
+/// or carries an empty token.
+pub(crate) fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
     let auth = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
     let token = auth.strip_prefix("Bearer ")?;
     if token.is_empty() { None } else { Some(token.to_owned()) }

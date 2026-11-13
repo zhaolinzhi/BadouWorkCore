@@ -12,7 +12,7 @@ use aionui_common::ApiError;
 use aionui_common::constants::{CSRF_COOKIE_NAME, CSRF_HEADER_NAME};
 
 use crate::cookie::CookieConfig;
-use crate::extract::extract_cookie_value;
+use crate::extract::{extract_bearer_token, extract_cookie_value};
 
 /// CSRF protection middleware using the Double Submit Cookie pattern.
 ///
@@ -41,17 +41,17 @@ pub async fn csrf_middleware(
     // cannot attach cross-site without a CORS preflight. The token itself is
     // still fully validated by the auth middleware behind this layer.
     let is_runtime_token_request = request.headers().contains_key(crate::middleware::RUNTIME_TOKEN_HEADER);
-    // A bearer token is never attached ambiently by a browser: a cross-site
-    // request that adds an `Authorization` header must pass a CORS preflight,
-    // which the non-local CORS policy does not grant. The token is still fully
-    // validated by the auth middleware behind this layer, so skipping the
-    // double-submit check here weakens nothing.
-    let has_bearer_token = request
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .map(|v| v.starts_with("Bearer "))
-        .unwrap_or(false);
+    // A bearer token is never attached ambiently by a browser, so a cross-site
+    // request that adds an `Authorization` header is not a cookie-borne CSRF
+    // attempt. A browser also cannot send an `Authorization` header whose
+    // value both starts with "Bearer " and carries an empty token: the Fetch
+    // standard forbids trailing whitespace in header values, so "Bearer " is
+    // normalised to "Bearer" before transmission. A non-empty bearer token is
+    // fully verified by the auth middleware behind this layer (401 on failure)
+    // and never falls back to the session cookie, so skipping the
+    // double-submit check here weakens nothing. Requests without a bearer
+    // credential are unaffected.
+    let has_bearer_token = extract_bearer_token(request.headers()).is_some();
     let is_exempt = path == "/login"
         || path == "/api/auth/qr-login"
         || path.starts_with("/api/auth/internal/external-users/")

@@ -854,3 +854,57 @@ async fn csrf_allows_a_request_that_carries_a_bearer_token() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
+
+#[tokio::test]
+async fn csrf_rejects_an_empty_bearer_token() {
+    let cookie_config = Arc::new(CookieConfig {
+        secure: false,
+        same_site: "Lax",
+    });
+    let app = Router::new()
+        .route("/api/thing", post(|| async { "ok" }))
+        .layer(middleware::from_fn_with_state(cookie_config, csrf_middleware));
+
+    // `Authorization: Bearer ` (trailing space, empty token) is not a bearer
+    // credential: the auth middleware treats it as absent and falls back to
+    // the session cookie, so the request must still pass the double-submit
+    // check.
+    let resp = app
+        .oneshot(
+            Request::post("/api/thing")
+                .header(header::AUTHORIZATION, "Bearer ")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let json = json_body(resp).await;
+    assert_eq!(json["code"], "CSRF_INVALID");
+}
+
+#[tokio::test]
+async fn csrf_rejects_a_lowercase_bearer_scheme() {
+    let cookie_config = Arc::new(CookieConfig {
+        secure: false,
+        same_site: "Lax",
+    });
+    let app = Router::new()
+        .route("/api/thing", post(|| async { "ok" }))
+        .layer(middleware::from_fn_with_state(cookie_config, csrf_middleware));
+
+    // Only the exact `Bearer ` scheme is recognised as a bearer credential;
+    // a lowercase `bearer ` is not, so the double-submit check still applies.
+    let resp = app
+        .oneshot(
+            Request::post("/api/thing")
+                .header(header::AUTHORIZATION, "bearer some.jwt.token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let json = json_body(resp).await;
+    assert_eq!(json["code"], "CSRF_INVALID");
+}
