@@ -127,6 +127,10 @@ pub struct EnsureExternalSessionRequest {
 pub struct EnsureExternalSessionResponse {
     pub user: PublicUser,
     pub session_generation: i64,
+    /// The session JWT. Also delivered as an `aionui-session` cookie; clients
+    /// that cannot read an HttpOnly cookie (the Electron main process) need
+    /// it in the body.
+    pub token: String,
 }
 
 /// Request body for `POST /api/auth/internal/external-sessions/revoke`.

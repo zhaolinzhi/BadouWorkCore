@@ -133,6 +133,7 @@ impl AuthProvisionService {
             response: EnsureExternalSessionResponse {
                 user: PublicUser { id: user.id, username },
                 session_generation: user.session_generation,
+                token: token.clone(),
             },
             token,
         })

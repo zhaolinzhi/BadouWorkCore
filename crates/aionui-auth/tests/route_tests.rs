@@ -12,6 +12,7 @@ use axum::http::{Request, StatusCode, header};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
+use aionui_api_types::{EnsureExternalSessionResponse, PublicUser};
 use aionui_auth::{
     AuthIdentityMode, AuthRouterState, CookieConfig, JwtService, QrTokenStore, SessionRevokedHook, auth_routes,
     hash_password,
@@ -901,7 +902,7 @@ async fn external_user_provision_is_idempotent() {
 }
 
 #[tokio::test]
-async fn external_session_exchange_returns_cookie_without_json_token() {
+async fn external_session_exchange_returns_cookie_and_json_token() {
     let (app, _ctx) = test_app_with_options(false, Some("bootstrap-secret")).await;
 
     let provision = app
@@ -928,7 +929,9 @@ async fn external_session_exchange_returns_cookie_without_json_token() {
     assert!(session.headers().get(header::SET_COOKIE).is_some());
     let token = extract_session_token(&session).unwrap();
     let json = body_json(session).await;
-    assert!(json["data"].get("token").is_none());
+    // The token also travels in the body for clients that cannot read the
+    // HttpOnly cookie.
+    assert_eq!(json["data"]["token"], token);
     assert_eq!(json["data"]["user"]["username"], "Pro User");
 
     let user_resp = app.oneshot(get_with_token("/api/auth/user", &token)).await.unwrap();
@@ -993,7 +996,7 @@ async fn external_session_revoke_invalidates_existing_token() {
     let token = extract_session_token(&session).unwrap();
     let session_json = body_json(session).await;
     assert_eq!(session_json["data"]["session_generation"], 0);
-    assert!(session_json["data"].get("token").is_none());
+    assert!(session_json["data"].get("token").is_some());
 
     let revoke = app
         .clone()
@@ -1107,4 +1110,20 @@ async fn t12_2_internal_user_routes_work_in_local_mode() {
     let renamed_json = body_json(renamed_resp).await;
     assert_eq!(renamed_json["data"]["id"], user_id);
     assert_eq!(renamed_json["data"]["username"], "renamed-admin");
+}
+
+#[tokio::test]
+async fn external_session_response_contains_the_token() {
+    // The desktop client cannot read an HttpOnly cookie, so the token must
+    // also travel in the JSON body.
+    let response = EnsureExternalSessionResponse {
+        user: PublicUser {
+            id: "user_abc".into(),
+            username: "alice".into(),
+        },
+        session_generation: 3,
+        token: "jwt-123".into(),
+    };
+    let json = serde_json::to_value(&response).unwrap();
+    assert_eq!(json["token"], "jwt-123");
 }
