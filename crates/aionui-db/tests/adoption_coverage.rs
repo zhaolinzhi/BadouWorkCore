@@ -35,6 +35,9 @@ const GLOBAL_TABLES: &[(&str, &str)] = &[
     // Canonical filesystem-path registry shared by all users by design
     // (project-bind: folders are reused globally by resource_canonical).
     ("folders", "global canonical path registry"),
+    // Tag vocabulary is shared by every account; the per-account ownership
+    // lives on `note_tags`, not on `tags`.
+    ("tags", "shared tag vocabulary — ownership lives on note_tags"),
 ];
 
 /// Tables whose `user_id` column is NOT a Core-user ownership column — it
