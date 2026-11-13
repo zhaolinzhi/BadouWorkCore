@@ -10,8 +10,13 @@ use sha2::{Digest, Sha256};
 
 use crate::error::AuthError;
 
-/// JWT token lifetime: 24 hours.
-const TOKEN_EXPIRY: Duration = Duration::from_secs(24 * 60 * 60);
+/// JWT token lifetime: 7 days.
+///
+/// The desktop app signs in against an external SSO provider and holds the
+/// resulting session for a week, so the user is not asked to re-authenticate
+/// daily. The signing secret is persisted in the database, so a token issued
+/// before a restart stays valid afterwards.
+const TOKEN_EXPIRY: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
 /// JWT issuer claim value.
 const JWT_ISSUER: &str = "aionui";
@@ -60,7 +65,7 @@ impl JwtService {
         }
     }
 
-    /// Sign a new JWT for the given user. The token expires after 24 hours.
+    /// Sign a new JWT for the given user. The token expires after 7 days.
     pub fn sign(&self, user_id: &str, username: &str) -> Result<String, AuthError> {
         self.sign_with_session_generation(user_id, username, 0)
     }
@@ -392,7 +397,7 @@ mod tests {
         assert_eq!(service.blacklist_size(), 1);
 
         service.cleanup_blacklist();
-        // Token just signed with 24h expiry should still be in blacklist
+        // Token just signed with 7d expiry should still be in blacklist
         assert_eq!(service.blacklist_size(), 1);
     }
 
