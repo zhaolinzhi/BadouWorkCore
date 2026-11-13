@@ -41,11 +41,23 @@ pub async fn csrf_middleware(
     // cannot attach cross-site without a CORS preflight. The token itself is
     // still fully validated by the auth middleware behind this layer.
     let is_runtime_token_request = request.headers().contains_key(crate::middleware::RUNTIME_TOKEN_HEADER);
+    // A bearer token is never attached ambiently by a browser: a cross-site
+    // request that adds an `Authorization` header must pass a CORS preflight,
+    // which the non-local CORS policy does not grant. The token is still fully
+    // validated by the auth middleware behind this layer, so skipping the
+    // double-submit check here weakens nothing.
+    let has_bearer_token = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.starts_with("Bearer "))
+        .unwrap_or(false);
     let is_exempt = path == "/login"
         || path == "/api/auth/qr-login"
         || path.starts_with("/api/auth/internal/external-users/")
         || path.starts_with("/api/auth/internal/external-sessions")
-        || is_runtime_token_request;
+        || is_runtime_token_request
+        || has_bearer_token;
 
     if needs_validation && !is_exempt {
         let header_token = request

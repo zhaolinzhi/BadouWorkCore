@@ -829,3 +829,28 @@ async fn csrf_exempts_requests_bearing_runtime_token_header() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
+
+#[tokio::test]
+async fn csrf_allows_a_request_that_carries_a_bearer_token() {
+    let cookie_config = Arc::new(CookieConfig {
+        secure: false,
+        same_site: "Lax",
+    });
+    let app = Router::new()
+        .route("/api/thing", post(|| async { "ok" }))
+        .layer(middleware::from_fn_with_state(cookie_config, csrf_middleware));
+
+    // A bearer token is never attached ambiently by a browser, so the
+    // double-submit check is skipped (token validity is enforced later by the
+    // auth middleware, which is not part of this app).
+    let resp = app
+        .oneshot(
+            Request::post("/api/thing")
+                .header(header::AUTHORIZATION, "Bearer some.jwt.token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
