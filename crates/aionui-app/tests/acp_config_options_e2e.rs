@@ -5,7 +5,10 @@ use axum::http::{Request, StatusCode};
 use serde_json::json;
 use tower::ServiceExt;
 
-use common::{body_json, build_app_with_mock_agents, get_with_token, json_with_token, setup_and_login};
+use common::{
+    body_json, build_app_with_mock_agents, get_with_token, json_with_token, setup_and_login,
+    setup_and_login_with_session_cookie,
+};
 
 fn create_body() -> serde_json::Value {
     json!({
@@ -81,13 +84,19 @@ async fn runtime_ensure_requires_auth() {
 #[tokio::test]
 async fn runtime_ensure_requires_csrf() {
     let (mut app, services) = build_app_with_mock_agents().await;
-    let (token, csrf) = setup_and_login(&mut app, &services, "admin", "StrongP@ss1").await;
+    let (token, csrf, session_cookie) =
+        setup_and_login_with_session_cookie(&mut app, &services, "admin", "StrongP@ss1").await;
     let id = create_conversation(&mut app, &token, &csrf).await;
 
+    // The WebUI browser flow is cookie-authenticated: the login response set
+    // the `aionui-session` cookie and the browser attaches it automatically,
+    // even though the client also sends the bearer token. Such a request must
+    // still prove it was not cross-site by sending the CSRF header.
     let req = Request::builder()
         .method("POST")
         .uri(format!("/api/conversations/{id}/runtime/ensure"))
         .header("authorization", format!("Bearer {token}"))
+        .header("cookie", format!("aionui-session={session_cookie}"))
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -164,14 +173,19 @@ async fn runtime_ensure_uses_existing_agent_without_recovery() {
 #[tokio::test]
 async fn set_config_option_requires_csrf() {
     let (mut app, services) = build_app_with_mock_agents().await;
-    let (token, csrf) = setup_and_login(&mut app, &services, "admin", "StrongP@ss1").await;
+    let (token, csrf, session_cookie) =
+        setup_and_login_with_session_cookie(&mut app, &services, "admin", "StrongP@ss1").await;
     let id = create_and_ensure_runtime_conversation(&mut app, &token, &csrf).await;
 
+    // Cookie-authenticated request (see `runtime_ensure_requires_csrf`): the
+    // ambient session cookie is present, so the double-submit check applies
+    // even though the client also sends the bearer token.
     let req = Request::builder()
         .method("PUT")
         .uri(format!("/api/conversations/{id}/config-options/model"))
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
+        .header("cookie", format!("aionui-session={session_cookie}"))
         .body(Body::from(
             serde_json::to_vec(&json!({ "value": "mock-model-updated" })).unwrap(),
         ))
