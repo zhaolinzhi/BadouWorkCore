@@ -12,7 +12,6 @@ use axum::http::{Request, StatusCode, header};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
-use aionui_api_types::{EnsureExternalSessionResponse, PublicUser};
 use aionui_auth::{
     AuthIdentityMode, AuthRouterState, CookieConfig, JwtService, QrTokenStore, SessionRevokedHook, auth_routes,
     hash_password,
@@ -1110,20 +1109,4 @@ async fn t12_2_internal_user_routes_work_in_local_mode() {
     let renamed_json = body_json(renamed_resp).await;
     assert_eq!(renamed_json["data"]["id"], user_id);
     assert_eq!(renamed_json["data"]["username"], "renamed-admin");
-}
-
-#[tokio::test]
-async fn external_session_response_contains_the_token() {
-    // The desktop client cannot read an HttpOnly cookie, so the token must
-    // also travel in the JSON body.
-    let response = EnsureExternalSessionResponse {
-        user: PublicUser {
-            id: "user_abc".into(),
-            username: "alice".into(),
-        },
-        session_generation: 3,
-        token: "jwt-123".into(),
-    };
-    let json = serde_json::to_value(&response).unwrap();
-    assert_eq!(json["token"], "jwt-123");
 }

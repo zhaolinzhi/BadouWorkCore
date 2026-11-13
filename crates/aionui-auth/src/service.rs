@@ -42,7 +42,6 @@ pub struct AuthProvisionService {
 
 pub struct ExternalSessionExchange {
     pub response: EnsureExternalSessionResponse,
-    pub token: String,
 }
 
 impl AuthProvisionService {
@@ -133,9 +132,8 @@ impl AuthProvisionService {
             response: EnsureExternalSessionResponse {
                 user: PublicUser { id: user.id, username },
                 session_generation: user.session_generation,
-                token: token.clone(),
+                token,
             },
-            token,
         })
     }
 

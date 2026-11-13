@@ -403,7 +403,7 @@ async fn create_external_session_handler(
         user_id = %exchange.response.user.id,
         "external core session exchange succeeded"
     );
-    let cookie = state.cookie_config.build_session_cookie(&exchange.token);
+    let cookie = state.cookie_config.build_session_cookie(&exchange.response.token);
     Ok(([(header::SET_COOKIE, cookie)], Json(ApiResponse::ok(exchange.response))).into_response())
 }
 
