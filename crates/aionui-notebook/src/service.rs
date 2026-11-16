@@ -14,13 +14,6 @@ use crate::error::NotebookError;
 use crate::file_store::MdFileStore;
 use crate::workspace::{WorkspaceConfig, generate_md_filename};
 
-/// 临时占位用的账号 ID。
-///
-/// 笔记服务尚未接入请求级身份（`CurrentUser`），本任务只改仓库层，
-/// 因此这里先统一使用本地默认账号。后续任务会把真实的 `user_id`
-/// 从路由层透传下来，替换掉这个常量。
-const DEFAULT_USER_ID: &str = "system_default_user";
-
 #[derive(Clone)]
 pub struct NotebookService {
     notebook_repo: Arc<dyn INotebookRepository>,
@@ -59,13 +52,18 @@ impl NotebookService {
     /// 创建一个新笔记本。
     ///
     /// - `name` 不能为空（trim 后判定）。
-    /// - `name` 不能与已有笔记本重名，否则返回 `DuplicateName`。
-    pub async fn create_notebook(&self, req: CreateNotebookRequest) -> Result<NotebookResponse, NotebookError> {
+    /// - `name` 不能与该账号已有笔记本重名，否则返回 `DuplicateName`。
+    /// - `user_id` 为当前登录账号，新建行归属于该账号。
+    pub async fn create_notebook(
+        &self,
+        req: CreateNotebookRequest,
+        user_id: &str,
+    ) -> Result<NotebookResponse, NotebookError> {
         let name = req.name.trim().to_owned();
         if name.is_empty() {
             return Err(NotebookError::InvalidRequest("name must not be empty".into()));
         }
-        if self.notebook_repo.find_by_name(&name, DEFAULT_USER_ID).await?.is_some() {
+        if self.notebook_repo.find_by_name(&name, user_id).await?.is_some() {
             return Err(NotebookError::DuplicateName(name));
         }
         let now = now_ms();
@@ -73,7 +71,7 @@ impl NotebookService {
             id: generate_prefixed_id("nb"),
             name,
             description: req.description,
-            user_id: DEFAULT_USER_ID.to_string(),
+            user_id: user_id.to_owned(),
             created_at: now,
             updated_at: now,
         };
@@ -81,26 +79,27 @@ impl NotebookService {
         Ok(to_notebook_response(&row))
     }
 
-    /// 列出所有笔记本（不分页，按仓库默认排序）。
-    pub async fn list_notebooks(&self) -> Result<Vec<NotebookResponse>, NotebookError> {
-        let rows = self.notebook_repo.list_all(DEFAULT_USER_ID).await?;
+    /// 列出当前账号的所有笔记本（不分页，按仓库默认排序）。
+    pub async fn list_notebooks(&self, user_id: &str) -> Result<Vec<NotebookResponse>, NotebookError> {
+        let rows = self.notebook_repo.list_all(user_id).await?;
         Ok(rows.iter().map(to_notebook_response).collect())
     }
 
     /// 获取某个笔记本及其下全部笔记。
     ///
-    /// 若 `id` 不存在，返回 `NotebookNotFound`。
+    /// 若 `id` 不存在或不属于 `user_id`，返回 `NotebookNotFound`。
     pub async fn get_notebook_with_notes(
         &self,
         id: &str,
+        user_id: &str,
     ) -> Result<(NotebookResponse, Vec<NoteResponse>), NotebookError> {
         let notebook = self
             .notebook_repo
-            .get_by_id(id, DEFAULT_USER_ID)
+            .get_by_id(id, user_id)
             .await?
             .ok_or_else(|| NotebookError::NotebookNotFound(id.to_owned()))?;
-        let notes = self.note_repo.list_by_notebook(&notebook.id, DEFAULT_USER_ID).await?;
-        let note_responses = self.rows_to_responses(notes).await?;
+        let notes = self.note_repo.list_by_notebook(&notebook.id, user_id).await?;
+        let note_responses = self.rows_to_responses(notes, user_id).await?;
         Ok((to_notebook_response(&notebook), note_responses))
     }
 
@@ -108,11 +107,12 @@ impl NotebookService {
     /// - `None` 不修改；
     /// - `Some(value)` 则设置为 `value`。
     ///
-    /// 若新名称与已有笔记本重名（且不是自身）则返回 `DuplicateName`。
+    /// 若新名称与该账号已有笔记本重名（且不是自身）则返回 `DuplicateName`。
     pub async fn update_notebook(
         &self,
         id: &str,
         req: UpdateNotebookRequest,
+        user_id: &str,
     ) -> Result<NotebookResponse, NotebookError> {
         if let Some(ref name) = req.name
             && name.trim().is_empty()
@@ -120,7 +120,7 @@ impl NotebookService {
             return Err(NotebookError::InvalidRequest("name must not be empty".into()));
         }
         if let Some(ref new_name) = req.name
-            && let Some(existing) = self.notebook_repo.find_by_name(new_name, DEFAULT_USER_ID).await?
+            && let Some(existing) = self.notebook_repo.find_by_name(new_name, user_id).await?
             && existing.id != id
         {
             return Err(NotebookError::DuplicateName(new_name.clone()));
@@ -129,18 +129,18 @@ impl NotebookService {
             name: req.name,
             description: req.description,
         };
-        self.notebook_repo.update(id, DEFAULT_USER_ID, &params).await?;
+        self.notebook_repo.update(id, user_id, &params).await?;
         let row = self
             .notebook_repo
-            .get_by_id(id, DEFAULT_USER_ID)
+            .get_by_id(id, user_id)
             .await?
             .ok_or_else(|| NotebookError::NotebookNotFound(id.to_owned()))?;
         Ok(to_notebook_response(&row))
     }
 
     /// 删除笔记本。当前实现不级联删除该笔记本下的笔记。
-    pub async fn delete_notebook(&self, id: &str) -> Result<(), NotebookError> {
-        self.notebook_repo.delete(id, DEFAULT_USER_ID).await?;
+    pub async fn delete_notebook(&self, id: &str, user_id: &str) -> Result<(), NotebookError> {
+        self.notebook_repo.delete(id, user_id).await?;
         Ok(())
     }
 
@@ -150,12 +150,14 @@ impl NotebookService {
     ///
     /// - `title` 不能为空。
     /// - 路径参数 `path_notebook_id` 优先；若为空则回落到 `req.notebook_id`（见规范 §5）。
+    /// - 目标笔记本必须属于 `user_id`，否则返回 `NotebookNotFound`。
     /// - 先写 Markdown 文件，再写 SQLite 元数据；若 SQLite 插入失败会自动清理已写入的文件。
     /// - 标签会先做 `insert_ignore_all` 后再 `set_note_tags` 建立关联。
     pub async fn create_note(
         &self,
         path_notebook_id: &str,
         req: CreateNoteRequest,
+        user_id: &str,
     ) -> Result<NoteResponse, NotebookError> {
         let title = req.title.trim().to_owned();
         if title.is_empty() {
@@ -168,7 +170,7 @@ impl NotebookService {
             req.notebook_id.clone()
         };
         if let Some(ref nb_id) = effective_notebook_id
-            && self.notebook_repo.get_by_id(nb_id, DEFAULT_USER_ID).await?.is_none()
+            && self.notebook_repo.get_by_id(nb_id, user_id).await?.is_none()
         {
             return Err(NotebookError::NotebookNotFound(nb_id.clone()));
         }
@@ -189,7 +191,7 @@ impl NotebookService {
             notebook_id: effective_notebook_id,
             summary: req.summary.clone(),
             star: 0,
-            user_id: DEFAULT_USER_ID.to_string(),
+            user_id: user_id.to_owned(),
             created_at: now,
             updated_at: now,
         };
@@ -199,29 +201,32 @@ impl NotebookService {
         }
 
         if !req.tags.is_empty() {
-            self.tag_repo.insert_ignore_all(&req.tags, DEFAULT_USER_ID).await?;
-            self.tag_repo.set_note_tags(&id, &req.tags, DEFAULT_USER_ID).await?;
+            self.tag_repo.insert_ignore_all(&req.tags, user_id).await?;
+            self.tag_repo.set_note_tags(&id, &req.tags, user_id).await?;
         }
 
         Ok(to_note_response(&row, req.tags))
     }
 
-    /// 列出指定笔记本下的全部笔记。若笔记本不存在返回 `NotebookNotFound`。
-    pub async fn list_notes_by_notebook(&self, notebook_id: &str) -> Result<Vec<NoteResponse>, NotebookError> {
-        if self
-            .notebook_repo
-            .get_by_id(notebook_id, DEFAULT_USER_ID)
-            .await?
-            .is_none()
-        {
+    /// 列出指定笔记本下的全部笔记。若笔记本不存在或不属于 `user_id`，返回 `NotebookNotFound`。
+    pub async fn list_notes_by_notebook(
+        &self,
+        notebook_id: &str,
+        user_id: &str,
+    ) -> Result<Vec<NoteResponse>, NotebookError> {
+        if self.notebook_repo.get_by_id(notebook_id, user_id).await?.is_none() {
             return Err(NotebookError::NotebookNotFound(notebook_id.to_owned()));
         }
-        let rows = self.note_repo.list_by_notebook(notebook_id, DEFAULT_USER_ID).await?;
-        self.rows_to_responses(rows).await
+        let rows = self.note_repo.list_by_notebook(notebook_id, user_id).await?;
+        self.rows_to_responses(rows, user_id).await
     }
 
-    /// 按查询条件（`notebook_id`、`tag`、`starred`、`limit`、`offset`）列出笔记。
-    pub async fn list_notes_filtered(&self, query: &ListNotesQuery) -> Result<Vec<NoteResponse>, NotebookError> {
+    /// 按查询条件（`notebook_id`、`tag`、`starred`、`limit`、`offset`）列出当前账号的笔记。
+    pub async fn list_notes_filtered(
+        &self,
+        query: &ListNotesQuery,
+        user_id: &str,
+    ) -> Result<Vec<NoteResponse>, NotebookError> {
         let filter = ListNotesFilter {
             notebook_id: query.notebook_id.clone(),
             tag: query.tag.clone(),
@@ -229,35 +234,35 @@ impl NotebookService {
             limit: query.limit.map(|n| n as i64),
             offset: query.offset.map(|n| n as i64),
         };
-        let rows = self.note_repo.list_filtered(&filter, DEFAULT_USER_ID).await?;
-        self.rows_to_responses(rows).await
+        let rows = self.note_repo.list_filtered(&filter, user_id).await?;
+        self.rows_to_responses(rows, user_id).await
     }
 
     /// 按 id 获取笔记元数据（含标签），不读文件正文。
-    pub async fn get_note(&self, id: &str) -> Result<NoteResponse, NotebookError> {
+    pub async fn get_note(&self, id: &str, user_id: &str) -> Result<NoteResponse, NotebookError> {
         let row = self
             .note_repo
-            .get_by_id(id, DEFAULT_USER_ID)
+            .get_by_id(id, user_id)
             .await?
             .ok_or_else(|| NotebookError::NoteNotFound(id.to_owned()))?;
-        let tags = self.tag_repo.tags_for_note(&row.id, DEFAULT_USER_ID).await?;
+        let tags = self.tag_repo.tags_for_note(&row.id, user_id).await?;
         Ok(to_note_response(&row, tags.into_iter().map(|t| t.name).collect()))
     }
 
     /// 获取笔记的原始 Markdown 正文。
     ///
     /// 若 SQLite 中存在记录但磁盘文件缺失，会自动删除孤儿行（自愈）并返回空内容。
-    pub async fn get_note_raw(&self, id: &str) -> Result<RawNoteResponse, NotebookError> {
+    pub async fn get_note_raw(&self, id: &str, user_id: &str) -> Result<RawNoteResponse, NotebookError> {
         let row = self
             .note_repo
-            .get_by_id(id, DEFAULT_USER_ID)
+            .get_by_id(id, user_id)
             .await?
             .ok_or_else(|| NotebookError::NoteNotFound(id.to_owned()))?;
         match self.file_store.read(&row.file_path).await {
             Ok(content) => Ok(RawNoteResponse { id: row.id, content }),
             Err(NotebookError::FileNotFound(p)) => {
                 tracing::warn!(note_id = %row.id, file = %p, "raw fetch auto-repair: deleting orphan row");
-                let _ = self.note_repo.delete(&row.id, DEFAULT_USER_ID).await;
+                let _ = self.note_repo.delete(&row.id, user_id).await;
                 Ok(RawNoteResponse {
                     id: row.id,
                     content: String::new(),
@@ -274,7 +279,12 @@ impl NotebookService {
     /// - `summary`: 同上。
     /// - `content`: 只有提供时才会重写磁盘文件；纯元数据更新不动文件正文。
     /// - `star`: 提供则覆盖，不提供则保持。
-    pub async fn update_note(&self, id: &str, req: UpdateNoteRequest) -> Result<NoteResponse, NotebookError> {
+    pub async fn update_note(
+        &self,
+        id: &str,
+        req: UpdateNoteRequest,
+        user_id: &str,
+    ) -> Result<NoteResponse, NotebookError> {
         if let Some(ref title) = req.title
             && title.trim().is_empty()
         {
@@ -283,7 +293,7 @@ impl NotebookService {
 
         let existing = self
             .note_repo
-            .get_by_id(id, DEFAULT_USER_ID)
+            .get_by_id(id, user_id)
             .await?
             .ok_or_else(|| NotebookError::NoteNotFound(id.to_owned()))?;
 
@@ -291,7 +301,7 @@ impl NotebookService {
             Some(vec) => vec.clone(),
             None => self
                 .tag_repo
-                .tags_for_note(id, DEFAULT_USER_ID)
+                .tags_for_note(id, user_id)
                 .await?
                 .into_iter()
                 .map(|t| t.name)
@@ -305,7 +315,7 @@ impl NotebookService {
         let resolved_notebook_id: Option<String> = match &req.notebook_id {
             Some(opt) => {
                 if let Some(new_id) = opt
-                    && self.notebook_repo.get_by_id(new_id, DEFAULT_USER_ID).await?.is_none()
+                    && self.notebook_repo.get_by_id(new_id, user_id).await?.is_none()
                 {
                     return Err(NotebookError::NotebookNotFound(new_id.clone()));
                 }
@@ -333,19 +343,19 @@ impl NotebookService {
             summary: Some(resolved_summary),
             star: star_i64,
         };
-        self.note_repo.update(id, DEFAULT_USER_ID, &params).await?;
+        self.note_repo.update(id, user_id, &params).await?;
 
         if req.tags.is_some() {
-            self.tag_repo.insert_ignore_all(&resolved_tags, DEFAULT_USER_ID).await?;
-            self.tag_repo.set_note_tags(id, &resolved_tags, DEFAULT_USER_ID).await?;
+            self.tag_repo.insert_ignore_all(&resolved_tags, user_id).await?;
+            self.tag_repo.set_note_tags(id, &resolved_tags, user_id).await?;
         }
 
         let updated = self
             .note_repo
-            .get_by_id(id, DEFAULT_USER_ID)
+            .get_by_id(id, user_id)
             .await?
             .ok_or_else(|| NotebookError::NoteNotFound(id.to_owned()))?;
-        let final_tags = self.tag_repo.tags_for_note(&updated.id, DEFAULT_USER_ID).await?;
+        let final_tags = self.tag_repo.tags_for_note(&updated.id, user_id).await?;
         Ok(to_note_response(
             &updated,
             final_tags.into_iter().map(|t| t.name).collect(),
@@ -353,22 +363,22 @@ impl NotebookService {
     }
 
     /// 删除笔记：先删 SQLite 行，再尝试删除磁盘文件（失败不返回错误）。
-    pub async fn delete_note(&self, id: &str) -> Result<(), NotebookError> {
+    pub async fn delete_note(&self, id: &str, user_id: &str) -> Result<(), NotebookError> {
         let row = self
             .note_repo
-            .get_by_id(id, DEFAULT_USER_ID)
+            .get_by_id(id, user_id)
             .await?
             .ok_or_else(|| NotebookError::NoteNotFound(id.to_owned()))?;
-        self.note_repo.delete(id, DEFAULT_USER_ID).await?;
+        self.note_repo.delete(id, user_id).await?;
         let _ = self.file_store.delete(&row.file_path).await;
         Ok(())
     }
 
     /// 切换笔记星标状态（0 ↔ 1），返回最新状态。
-    pub async fn toggle_star(&self, id: &str) -> Result<StarToggleResponse, NotebookError> {
+    pub async fn toggle_star(&self, id: &str, user_id: &str) -> Result<StarToggleResponse, NotebookError> {
         let row = self
             .note_repo
-            .get_by_id(id, DEFAULT_USER_ID)
+            .get_by_id(id, user_id)
             .await?
             .ok_or_else(|| NotebookError::NoteNotFound(id.to_owned()))?;
         let new_star = if row.star == 0 { 1 } else { 0 };
@@ -376,16 +386,16 @@ impl NotebookService {
             star: Some(new_star),
             ..Default::default()
         };
-        self.note_repo.update(id, DEFAULT_USER_ID, &params).await?;
+        self.note_repo.update(id, user_id, &params).await?;
         Ok(StarToggleResponse {
             id: id.to_string(),
             star: new_star == 1,
         })
     }
 
-    /// 列出所有标签及其被引用次数（按 `tag_repo.list_with_counts` 结果）。
-    pub async fn list_tags(&self) -> Result<TagsListResponse, NotebookError> {
-        let rows = self.tag_repo.list_with_counts(DEFAULT_USER_ID).await?;
+    /// 列出当前账号的所有标签及其被引用次数（按 `tag_repo.list_with_counts` 结果）。
+    pub async fn list_tags(&self, user_id: &str) -> Result<TagsListResponse, NotebookError> {
+        let rows = self.tag_repo.list_with_counts(user_id).await?;
         let tags = rows
             .into_iter()
             .map(|r| TagResponse {
@@ -399,9 +409,9 @@ impl NotebookService {
     // ── Helpers ──────────────────────────────────────────────────
 
     /// 将一批 `NoteRow` 转成 `NoteResponse`，批量预取标签避免 N+1。
-    async fn rows_to_responses(&self, rows: Vec<NoteRow>) -> Result<Vec<NoteResponse>, NotebookError> {
+    async fn rows_to_responses(&self, rows: Vec<NoteRow>, user_id: &str) -> Result<Vec<NoteResponse>, NotebookError> {
         let ids: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
-        let grouped = self.tag_repo.tags_for_notes(&ids, DEFAULT_USER_ID).await?;
+        let grouped = self.tag_repo.tags_for_notes(&ids, user_id).await?;
         Ok(rows
             .into_iter()
             .map(|row| {

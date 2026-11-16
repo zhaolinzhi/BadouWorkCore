@@ -27,14 +27,20 @@ async fn setup() -> (NotebookService, WorkspaceConfig, TempDir) {
     (service, workspace, tmp)
 }
 
+/// 与隔离性无关的测试统一使用的账号 ID。
+const TEST_USER: &str = "system_default_user";
+
 #[tokio::test]
 async fn create_and_read_note_roundtrips() {
     let (service, _ws, _tmp) = setup().await;
     let nb = service
-        .create_notebook(CreateNotebookRequest {
-            name: "Travel".into(),
-            description: None,
-        })
+        .create_notebook(
+            CreateNotebookRequest {
+                name: "Travel".into(),
+                description: None,
+            },
+            TEST_USER,
+        )
         .await
         .unwrap();
     let note = service
@@ -47,6 +53,7 @@ async fn create_and_read_note_roundtrips() {
                 tags: vec!["japan".into()],
                 summary: Some("Day 1".into()),
             },
+            TEST_USER,
         )
         .await
         .unwrap();
@@ -54,7 +61,7 @@ async fn create_and_read_note_roundtrips() {
     assert_eq!(note.notebook_id.as_deref(), Some(nb.id.as_str()));
     assert_eq!(note.tags, vec!["japan".to_string()]);
 
-    let raw = service.get_note_raw(&note.id).await.unwrap();
+    let raw = service.get_note_raw(&note.id, TEST_USER).await.unwrap();
     // Body is the raw markdown content — no metadata block.
     assert_eq!(raw.content, "Day 1 plan");
     assert!(!raw.content.contains("<!-- aionui-meta"));
@@ -74,6 +81,7 @@ async fn update_note_overwrites_md_file() {
                 tags: vec![],
                 summary: None,
             },
+            TEST_USER,
         )
         .await
         .unwrap();
@@ -88,10 +96,11 @@ async fn update_note_overwrites_md_file() {
                 summary: None,
                 star: None,
             },
+            TEST_USER,
         )
         .await
         .unwrap();
-    let raw = service.get_note_raw(&note.id).await.unwrap();
+    let raw = service.get_note_raw(&note.id, TEST_USER).await.unwrap();
     assert!(raw.content.contains("v2"));
 }
 
@@ -108,15 +117,16 @@ async fn delete_note_removes_file_and_row() {
                 tags: vec![],
                 summary: None,
             },
+            TEST_USER,
         )
         .await
         .unwrap();
-    service.delete_note(&note.id).await.unwrap();
+    service.delete_note(&note.id, TEST_USER).await.unwrap();
     assert!(matches!(
-        service.get_note(&note.id).await,
+        service.get_note(&note.id, TEST_USER).await,
         Err(NotebookError::NoteNotFound(_))
     ));
-    let raw_err = service.get_note_raw(&note.id).await.unwrap_err();
+    let raw_err = service.get_note_raw(&note.id, TEST_USER).await.unwrap_err();
     assert!(matches!(raw_err, NotebookError::NoteNotFound(_)));
 }
 
@@ -124,17 +134,23 @@ async fn delete_note_removes_file_and_row() {
 async fn list_notes_filtered_by_notebook() {
     let (service, _ws, _tmp) = setup().await;
     let nb1 = service
-        .create_notebook(CreateNotebookRequest {
-            name: "Travel".into(),
-            description: None,
-        })
+        .create_notebook(
+            CreateNotebookRequest {
+                name: "Travel".into(),
+                description: None,
+            },
+            TEST_USER,
+        )
         .await
         .unwrap();
     let nb2 = service
-        .create_notebook(CreateNotebookRequest {
-            name: "Work".into(),
-            description: None,
-        })
+        .create_notebook(
+            CreateNotebookRequest {
+                name: "Work".into(),
+                description: None,
+            },
+            TEST_USER,
+        )
         .await
         .unwrap();
     service
@@ -147,6 +163,7 @@ async fn list_notes_filtered_by_notebook() {
                 tags: vec![],
                 summary: None,
             },
+            TEST_USER,
         )
         .await
         .unwrap();
@@ -160,6 +177,7 @@ async fn list_notes_filtered_by_notebook() {
                 tags: vec![],
                 summary: None,
             },
+            TEST_USER,
         )
         .await
         .unwrap();
@@ -173,15 +191,19 @@ async fn list_notes_filtered_by_notebook() {
                 tags: vec![],
                 summary: None,
             },
+            TEST_USER,
         )
         .await
         .unwrap();
 
     let travel = service
-        .list_notes_filtered(&ListNotesQuery {
-            notebook_id: Some(nb1.id.clone()),
-            ..Default::default()
-        })
+        .list_notes_filtered(
+            &ListNotesQuery {
+                notebook_id: Some(nb1.id.clone()),
+                ..Default::default()
+            },
+            TEST_USER,
+        )
         .await
         .unwrap();
     assert_eq!(travel.len(), 2);
@@ -201,13 +223,14 @@ async fn toggle_star_flips() {
                 tags: vec![],
                 summary: None,
             },
+            TEST_USER,
         )
         .await
         .unwrap();
     assert!(!note.star);
-    let after = service.toggle_star(&note.id).await.unwrap();
+    let after = service.toggle_star(&note.id, TEST_USER).await.unwrap();
     assert!(after.star);
-    let after2 = service.toggle_star(&note.id).await.unwrap();
+    let after2 = service.toggle_star(&note.id, TEST_USER).await.unwrap();
     assert!(!after2.star);
 }
 
@@ -224,6 +247,7 @@ async fn list_tags_returns_counts() {
                 tags: vec!["shared".into(), "a".into()],
                 summary: None,
             },
+            TEST_USER,
         )
         .await
         .unwrap();
@@ -237,10 +261,11 @@ async fn list_tags_returns_counts() {
                 tags: vec!["shared".into(), "b".into()],
                 summary: None,
             },
+            TEST_USER,
         )
         .await
         .unwrap();
-    let tags = service.list_tags().await.unwrap();
+    let tags = service.list_tags(TEST_USER).await.unwrap();
     let shared = tags.tags.iter().find(|t| t.name == "shared").unwrap();
     assert_eq!(shared.count, 2);
 }
@@ -258,6 +283,7 @@ async fn create_note_with_unknown_notebook_id_returns_error() {
                 tags: vec![],
                 summary: None,
             },
+            TEST_USER,
         )
         .await
         .unwrap_err();
@@ -268,10 +294,13 @@ async fn create_note_with_unknown_notebook_id_returns_error() {
 async fn update_note_can_clear_notebook_via_some_none() {
     let (service, _ws, _tmp) = setup().await;
     let nb = service
-        .create_notebook(CreateNotebookRequest {
-            name: "Travel".into(),
-            description: None,
-        })
+        .create_notebook(
+            CreateNotebookRequest {
+                name: "Travel".into(),
+                description: None,
+            },
+            TEST_USER,
+        )
         .await
         .unwrap();
     let note = service
@@ -284,6 +313,7 @@ async fn update_note_can_clear_notebook_via_some_none() {
                 tags: vec![],
                 summary: None,
             },
+            TEST_USER,
         )
         .await
         .unwrap();
@@ -300,10 +330,11 @@ async fn update_note_can_clear_notebook_via_some_none() {
                 summary: None,
                 star: None,
             },
+            TEST_USER,
         )
         .await
         .unwrap();
-    let updated = service.get_note(&note.id).await.unwrap();
+    let updated = service.get_note(&note.id, TEST_USER).await.unwrap();
     assert!(updated.notebook_id.is_none());
 }
 
@@ -388,17 +419,23 @@ async fn reconcile_picks_up_external_file_removal() {
 async fn duplicate_notebook_name_returns_error() {
     let (service, _ws, _tmp) = setup().await;
     service
-        .create_notebook(CreateNotebookRequest {
-            name: "Dup".into(),
-            description: None,
-        })
+        .create_notebook(
+            CreateNotebookRequest {
+                name: "Dup".into(),
+                description: None,
+            },
+            TEST_USER,
+        )
         .await
         .unwrap();
     let err = service
-        .create_notebook(CreateNotebookRequest {
-            name: "Dup".into(),
-            description: None,
-        })
+        .create_notebook(
+            CreateNotebookRequest {
+                name: "Dup".into(),
+                description: None,
+            },
+            TEST_USER,
+        )
         .await
         .unwrap_err();
     assert!(matches!(err, NotebookError::DuplicateName(_)));
@@ -417,12 +454,158 @@ async fn get_note_raw_triggers_auto_repair_on_missing_file() {
                 tags: vec![],
                 summary: None,
             },
+            TEST_USER,
         )
         .await
         .unwrap();
     std::fs::remove_file(workspace.to_absolute(&note.file_path)).unwrap();
 
-    let raw = service.get_note_raw(&note.id).await.unwrap();
+    let raw = service.get_note_raw(&note.id, TEST_USER).await.unwrap();
     assert_eq!(raw.content, "");
-    assert!(service.get_note(&note.id).await.is_err());
+    assert!(service.get_note(&note.id, TEST_USER).await.is_err());
+}
+
+// ── 账号隔离 ────────────────────────────────────────────────────
+
+const USER_ALICE: &str = "user_alice";
+const USER_BOB: &str = "user_bob";
+
+#[tokio::test]
+async fn list_notebooks_is_scoped_to_the_calling_user() {
+    let (service, _ws, _tmp) = setup().await;
+    service
+        .create_notebook(
+            CreateNotebookRequest {
+                name: "Alice".into(),
+                description: None,
+            },
+            USER_ALICE,
+        )
+        .await
+        .unwrap();
+
+    let bob_nbs = service.list_notebooks(USER_BOB).await.unwrap();
+    assert!(bob_nbs.is_empty());
+
+    let alice_nbs = service.list_notebooks(USER_ALICE).await.unwrap();
+    assert_eq!(alice_nbs.len(), 1);
+    assert_eq!(alice_nbs[0].name, "Alice");
+}
+
+#[tokio::test]
+async fn list_notes_does_not_leak_across_users() {
+    let (service, _ws, _tmp) = setup().await;
+    let nb = service
+        .create_notebook(
+            CreateNotebookRequest {
+                name: "Alice".into(),
+                description: None,
+            },
+            USER_ALICE,
+        )
+        .await
+        .unwrap();
+    service
+        .create_note(
+            "",
+            CreateNoteRequest {
+                title: "Secret".into(),
+                content: "x".into(),
+                notebook_id: Some(nb.id.clone()),
+                tags: vec![],
+                summary: None,
+            },
+            USER_ALICE,
+        )
+        .await
+        .unwrap();
+
+    // Bob 不能在自己的笔记本视图里看到 Alice 的笔记本。
+    let bob_by_nb = service.list_notes_by_notebook(&nb.id, USER_BOB).await;
+    assert!(matches!(bob_by_nb, Err(NotebookError::NotebookNotFound(_))));
+
+    // 全局过滤查询同样按账号隔离。
+    let bob_all = service
+        .list_notes_filtered(&ListNotesQuery::default(), USER_BOB)
+        .await
+        .unwrap();
+    assert!(bob_all.is_empty());
+
+    let alice_all = service
+        .list_notes_filtered(&ListNotesQuery::default(), USER_ALICE)
+        .await
+        .unwrap();
+    assert_eq!(alice_all.len(), 1);
+    assert_eq!(alice_all[0].title, "Secret");
+}
+
+#[tokio::test]
+async fn create_note_in_another_users_notebook_is_rejected() {
+    let (service, _ws, _tmp) = setup().await;
+    let nb = service
+        .create_notebook(
+            CreateNotebookRequest {
+                name: "Alice".into(),
+                description: None,
+            },
+            USER_ALICE,
+        )
+        .await
+        .unwrap();
+
+    let err = service
+        .create_note(
+            "",
+            CreateNoteRequest {
+                title: "Trespass".into(),
+                content: "x".into(),
+                notebook_id: Some(nb.id.clone()),
+                tags: vec![],
+                summary: None,
+            },
+            USER_BOB,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, NotebookError::NotebookNotFound(_)));
+}
+
+#[tokio::test]
+async fn notebook_name_uniqueness_is_per_user() {
+    let (service, _ws, _tmp) = setup().await;
+    let alice_nb = service
+        .create_notebook(
+            CreateNotebookRequest {
+                name: "Ideas".into(),
+                description: None,
+            },
+            USER_ALICE,
+        )
+        .await
+        .unwrap();
+    // 同名笔记本在另一个账号下应当允许创建。
+    let bob_nb = service
+        .create_notebook(
+            CreateNotebookRequest {
+                name: "Ideas".into(),
+                description: None,
+            },
+            USER_BOB,
+        )
+        .await
+        .unwrap();
+    assert_ne!(alice_nb.id, bob_nb.id);
+
+    // 同一账号下仍然保持唯一。
+    let err = service
+        .create_notebook(
+            CreateNotebookRequest {
+                name: "Ideas".into(),
+                description: None,
+            },
+            USER_ALICE,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, NotebookError::DuplicateName(_)));
 }
