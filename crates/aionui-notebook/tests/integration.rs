@@ -338,7 +338,10 @@ async fn reconcile_ignores_external_files() {
     assert!(report.parse_failures.iter().any(|f| f == "notes/external.md"));
 
     // The DB has no record for this note.
-    let found = note_repo.get_by_file_path("notes/external.md").await.unwrap();
+    let found = note_repo
+        .get_by_file_path("notes/external.md", "system_default_user")
+        .await
+        .unwrap();
     assert!(found.is_none());
 }
 
@@ -362,6 +365,7 @@ async fn reconcile_picks_up_external_file_removal() {
             notebook_id: None,
             summary: None,
             star: 0,
+            user_id: "system_default_user".into(),
             created_at: aionui_common::now_ms(),
             updated_at: aionui_common::now_ms(),
         })
@@ -371,7 +375,13 @@ async fn reconcile_picks_up_external_file_removal() {
     let sync = WorkspaceSync::new(workspace, file_store, note_repo.clone(), notebook_repo, tag_repo);
     let report = sync.reconcile().await.unwrap();
     assert_eq!(report.removed, 1);
-    assert!(note_repo.get_by_id(note_id).await.unwrap().is_none());
+    assert!(
+        note_repo
+            .get_by_id(note_id, "system_default_user")
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[tokio::test]

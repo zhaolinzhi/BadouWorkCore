@@ -19,18 +19,22 @@ impl SqliteNotebookRepository {
 #[async_trait::async_trait]
 impl INotebookRepository for SqliteNotebookRepository {
     async fn insert(&self, row: &NotebookRow) -> Result<(), DbError> {
-        sqlx::query("INSERT INTO notebooks (id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
-            .bind(&row.id)
-            .bind(&row.name)
-            .bind(&row.description)
-            .bind(row.created_at)
-            .bind(row.updated_at)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(
+            "INSERT INTO notebooks (id, name, description, user_id, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&row.id)
+        .bind(&row.name)
+        .bind(&row.description)
+        .bind(&row.user_id)
+        .bind(row.created_at)
+        .bind(row.updated_at)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
-    async fn update(&self, id: &str, params: &UpdateNotebookParams) -> Result<(), DbError> {
+    async fn update(&self, id: &str, user_id: &str, params: &UpdateNotebookParams) -> Result<(), DbError> {
         let mut set_parts: Vec<String> = Vec::new();
         let mut binds: Vec<BindValue> = Vec::new();
 
@@ -51,12 +55,15 @@ impl INotebookRepository for SqliteNotebookRepository {
         set_parts.push("updated_at = ?".to_string());
         binds.push(BindValue::I64(now_ms()));
 
-        let sql = format!("UPDATE notebooks SET {} WHERE id = ?", set_parts.join(", "));
+        let sql = format!(
+            "UPDATE notebooks SET {} WHERE id = ? AND user_id = ?",
+            set_parts.join(", ")
+        );
         let mut query = sqlx::query(&sql);
         for bind in &binds {
             query = bind_value(query, bind);
         }
-        query = query.bind(id);
+        query = query.bind(id).bind(user_id);
 
         let result = query.execute(&self.pool).await?;
         if result.rows_affected() == 0 {
@@ -65,9 +72,10 @@ impl INotebookRepository for SqliteNotebookRepository {
         Ok(())
     }
 
-    async fn delete(&self, id: &str) -> Result<(), DbError> {
-        let result = sqlx::query("DELETE FROM notebooks WHERE id = ?")
+    async fn delete(&self, id: &str, user_id: &str) -> Result<(), DbError> {
+        let result = sqlx::query("DELETE FROM notebooks WHERE id = ? AND user_id = ?")
             .bind(id)
+            .bind(user_id)
             .execute(&self.pool)
             .await?;
         if result.rows_affected() == 0 {
@@ -76,26 +84,30 @@ impl INotebookRepository for SqliteNotebookRepository {
         Ok(())
     }
 
-    async fn get_by_id(&self, id: &str) -> Result<Option<NotebookRow>, DbError> {
-        let row = sqlx::query_as::<_, NotebookRow>("SELECT * FROM notebooks WHERE id = ?")
+    async fn get_by_id(&self, id: &str, user_id: &str) -> Result<Option<NotebookRow>, DbError> {
+        let row = sqlx::query_as::<_, NotebookRow>("SELECT * FROM notebooks WHERE id = ? AND user_id = ?")
             .bind(id)
+            .bind(user_id)
             .fetch_optional(&self.pool)
             .await?;
         Ok(row)
     }
 
-    async fn find_by_name(&self, name: &str) -> Result<Option<NotebookRow>, DbError> {
-        let row = sqlx::query_as::<_, NotebookRow>("SELECT * FROM notebooks WHERE name = ?")
+    async fn find_by_name(&self, name: &str, user_id: &str) -> Result<Option<NotebookRow>, DbError> {
+        let row = sqlx::query_as::<_, NotebookRow>("SELECT * FROM notebooks WHERE name = ? AND user_id = ?")
             .bind(name)
+            .bind(user_id)
             .fetch_optional(&self.pool)
             .await?;
         Ok(row)
     }
 
-    async fn list_all(&self) -> Result<Vec<NotebookRow>, DbError> {
-        let rows = sqlx::query_as::<_, NotebookRow>("SELECT * FROM notebooks ORDER BY created_at ASC")
-            .fetch_all(&self.pool)
-            .await?;
+    async fn list_all(&self, user_id: &str) -> Result<Vec<NotebookRow>, DbError> {
+        let rows =
+            sqlx::query_as::<_, NotebookRow>("SELECT * FROM notebooks WHERE user_id = ? ORDER BY created_at ASC")
+                .bind(user_id)
+                .fetch_all(&self.pool)
+                .await?;
         Ok(rows)
     }
 }
@@ -125,6 +137,8 @@ mod tests {
     use super::*;
     use crate::init_database_memory;
 
+    const USER: &str = "user_alice";
+
     async fn setup() -> (SqliteNotebookRepository, crate::Database) {
         let db = init_database_memory().await.expect("init db");
         let repo = SqliteNotebookRepository::new(db.pool().clone());
@@ -137,6 +151,7 @@ mod tests {
             id: id.into(),
             name: "Travel".into(),
             description: Some("Travel plans".into()),
+            user_id: USER.into(),
             created_at: now,
             updated_at: now,
         }
@@ -148,6 +163,7 @@ mod tests {
             id: id.into(),
             name: name.into(),
             description: Some("Travel plans".into()),
+            user_id: USER.into(),
             created_at: now,
             updated_at: now,
         }
@@ -159,16 +175,17 @@ mod tests {
         let row = make_row("nb_1");
         repo.insert(&row).await.unwrap();
 
-        let found = repo.get_by_id("nb_1").await.unwrap().expect("found");
+        let found = repo.get_by_id("nb_1", USER).await.unwrap().expect("found");
         assert_eq!(found.id, "nb_1");
         assert_eq!(found.name, "Travel");
         assert_eq!(found.description.as_deref(), Some("Travel plans"));
+        assert_eq!(found.user_id, USER);
     }
 
     #[tokio::test]
     async fn get_by_id_returns_none_for_missing() {
         let (repo, _db) = setup().await;
-        let result = repo.get_by_id("nb_missing").await.unwrap();
+        let result = repo.get_by_id("nb_missing", USER).await.unwrap();
         assert!(result.is_none());
     }
 
@@ -178,7 +195,7 @@ mod tests {
         repo.insert(&make_row_with_name("nb_a", "Travel-A")).await.unwrap();
         repo.insert(&make_row_with_name("nb_b", "Travel-B")).await.unwrap();
 
-        let all = repo.list_all().await.unwrap();
+        let all = repo.list_all(USER).await.unwrap();
         assert_eq!(all.len(), 2);
         assert_eq!(all[0].id, "nb_a");
         assert_eq!(all[1].id, "nb_b");
@@ -193,9 +210,9 @@ mod tests {
             name: Some("Renamed".into()),
             description: None,
         };
-        repo.update("nb_u1", &params).await.unwrap();
+        repo.update("nb_u1", USER, &params).await.unwrap();
 
-        let updated = repo.get_by_id("nb_u1").await.unwrap().unwrap();
+        let updated = repo.get_by_id("nb_u1", USER).await.unwrap().unwrap();
         assert_eq!(updated.name, "Renamed");
         assert!(updated.updated_at >= updated.created_at);
     }
@@ -210,9 +227,9 @@ mod tests {
             description: Some(None),
             ..Default::default()
         };
-        repo.update("nb_u2", &params).await.unwrap();
+        repo.update("nb_u2", USER, &params).await.unwrap();
 
-        let updated = repo.get_by_id("nb_u2").await.unwrap().unwrap();
+        let updated = repo.get_by_id("nb_u2", USER).await.unwrap().unwrap();
         assert!(updated.description.is_none());
     }
 
@@ -223,7 +240,7 @@ mod tests {
             name: Some("X".into()),
             ..Default::default()
         };
-        let err = repo.update("nb_nope", &params).await.unwrap_err();
+        let err = repo.update("nb_nope", USER, &params).await.unwrap_err();
         assert!(matches!(err, DbError::NotFound(_)));
     }
 
@@ -232,15 +249,15 @@ mod tests {
         let (repo, _db) = setup().await;
         repo.insert(&make_row("nb_d1")).await.unwrap();
 
-        repo.delete("nb_d1").await.unwrap();
-        let result = repo.get_by_id("nb_d1").await.unwrap();
+        repo.delete("nb_d1", USER).await.unwrap();
+        let result = repo.get_by_id("nb_d1", USER).await.unwrap();
         assert!(result.is_none());
     }
 
     #[tokio::test]
     async fn delete_nonexistent_returns_not_found() {
         let (repo, _db) = setup().await;
-        let err = repo.delete("nb_nope").await.unwrap_err();
+        let err = repo.delete("nb_nope", USER).await.unwrap_err();
         assert!(matches!(err, DbError::NotFound(_)));
     }
 
@@ -249,7 +266,7 @@ mod tests {
         let (repo, _db) = setup().await;
         repo.insert(&make_row("nb_n1")).await.unwrap();
 
-        let found = repo.find_by_name("Travel").await.unwrap().expect("found");
+        let found = repo.find_by_name("Travel", USER).await.unwrap().expect("found");
         assert_eq!(found.id, "nb_n1");
         assert_eq!(found.name, "Travel");
     }
@@ -257,7 +274,7 @@ mod tests {
     #[tokio::test]
     async fn find_by_name_returns_none_for_missing() {
         let (repo, _db) = setup().await;
-        let result = repo.find_by_name("Ghost").await.unwrap();
+        let result = repo.find_by_name("Ghost", USER).await.unwrap();
         assert!(result.is_none());
     }
 
@@ -267,5 +284,14 @@ mod tests {
         repo.insert(&make_row("nb_dup1")).await.unwrap();
         let result = repo.insert(&make_row("nb_dup2")).await;
         assert!(matches!(result, Err(DbError::Query(_)) | Err(DbError::Init(_))));
+    }
+
+    #[tokio::test]
+    async fn duplicate_name_is_allowed_for_another_user() {
+        let (repo, _db) = setup().await;
+        repo.insert(&make_row("nb_dup1")).await.unwrap();
+        let mut other = make_row("nb_dup2");
+        other.user_id = "user_bob".into();
+        repo.insert(&other).await.unwrap();
     }
 }

@@ -7,6 +7,13 @@ use crate::error::NotebookError;
 use crate::file_store::MdFileStore;
 use crate::workspace::WorkspaceConfig;
 
+/// 临时占位用的账号 ID。
+///
+/// reconcile 目前还没有请求级身份可用（`WorkspaceSync` 在启动时构造），
+/// 因此先统一使用本地默认账号。后续任务会把真实的 `user_id` 透传进来，
+/// 替换掉这个常量。
+const DEFAULT_USER_ID: &str = "system_default_user";
+
 /// `WorkspaceSync::reconcile()` 一次执行的结果汇总。
 #[derive(Debug, Default, Clone)]
 pub struct WorkspaceSyncReport {
@@ -65,13 +72,13 @@ impl WorkspaceSync {
         let disk_paths: HashSet<String> = on_disk.iter().map(|(name, _, _)| format!("notes/{name}")).collect();
 
         // 2. Enumerate DB rows.
-        let db_rows = self.note_repo.list_all_paths().await?;
+        let db_rows = self.note_repo.list_all_paths(DEFAULT_USER_ID).await?;
         let db_paths: HashSet<String> = db_rows.iter().map(|(_, p, _)| p.clone()).collect();
 
         // 3. DB rows whose files are missing → delete row.
         for (id, file_path, _) in &db_rows {
             if !disk_paths.contains(file_path) {
-                match self.note_repo.delete(id).await {
+                match self.note_repo.delete(id, DEFAULT_USER_ID).await {
                     Ok(_) => report.removed += 1,
                     Err(e) => warn!(note_id = %id, error = %e, "sync: failed to delete orphan row"),
                 }

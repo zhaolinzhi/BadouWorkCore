@@ -20,8 +20,8 @@ impl SqliteNoteRepository {
 impl INoteRepository for SqliteNoteRepository {
     async fn insert(&self, row: &NoteRow) -> Result<(), DbError> {
         sqlx::query(
-            "INSERT INTO notes (id, file_path, title, notebook_id, summary, star, created_at, updated_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO notes (id, file_path, title, notebook_id, summary, star, user_id, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&row.id)
         .bind(&row.file_path)
@@ -29,6 +29,7 @@ impl INoteRepository for SqliteNoteRepository {
         .bind(&row.notebook_id)
         .bind(&row.summary)
         .bind(row.star)
+        .bind(&row.user_id)
         .bind(row.created_at)
         .bind(row.updated_at)
         .execute(&self.pool)
@@ -36,7 +37,7 @@ impl INoteRepository for SqliteNoteRepository {
         Ok(())
     }
 
-    async fn update(&self, id: &str, params: &UpdateNoteParams) -> Result<(), DbError> {
+    async fn update(&self, id: &str, user_id: &str, params: &UpdateNoteParams) -> Result<(), DbError> {
         let mut set_parts: Vec<String> = Vec::new();
         let mut binds: Vec<BindValue> = Vec::new();
 
@@ -68,12 +69,12 @@ impl INoteRepository for SqliteNoteRepository {
         set_parts.push("updated_at = ?".into());
         binds.push(BindValue::I64(now_ms()));
 
-        let sql = format!("UPDATE notes SET {} WHERE id = ?", set_parts.join(", "));
+        let sql = format!("UPDATE notes SET {} WHERE id = ? AND user_id = ?", set_parts.join(", "));
         let mut query = sqlx::query(&sql);
         for bind in &binds {
             query = bind_value(query, bind);
         }
-        query = query.bind(id);
+        query = query.bind(id).bind(user_id);
 
         let result = query.execute(&self.pool).await?;
         if result.rows_affected() == 0 {
@@ -82,9 +83,10 @@ impl INoteRepository for SqliteNoteRepository {
         Ok(())
     }
 
-    async fn delete(&self, id: &str) -> Result<(), DbError> {
-        let result = sqlx::query("DELETE FROM notes WHERE id = ?")
+    async fn delete(&self, id: &str, user_id: &str) -> Result<(), DbError> {
+        let result = sqlx::query("DELETE FROM notes WHERE id = ? AND user_id = ?")
             .bind(id)
+            .bind(user_id)
             .execute(&self.pool)
             .await?;
         if result.rows_affected() == 0 {
@@ -93,22 +95,27 @@ impl INoteRepository for SqliteNoteRepository {
         Ok(())
     }
 
-    async fn get_by_id(&self, id: &str) -> Result<Option<NoteRow>, DbError> {
-        let row = sqlx::query_as::<_, NoteRow>("SELECT * FROM notes WHERE id = ?")
+    async fn get_by_id(&self, id: &str, user_id: &str) -> Result<Option<NoteRow>, DbError> {
+        let row = sqlx::query_as::<_, NoteRow>("SELECT * FROM notes WHERE id = ? AND user_id = ?")
             .bind(id)
+            .bind(user_id)
             .fetch_optional(&self.pool)
             .await?;
         Ok(row)
     }
 
-    async fn list_filtered(&self, filter: &ListNotesFilter) -> Result<Vec<NoteRow>, DbError> {
+    async fn list_filtered(&self, filter: &ListNotesFilter, user_id: &str) -> Result<Vec<NoteRow>, DbError> {
         let mut sql = String::from("SELECT notes.* FROM notes");
         let mut wheres: Vec<String> = Vec::new();
         let mut binds: Vec<BindValue> = Vec::new();
 
         if filter.tag.is_some() {
-            sql.push_str(" INNER JOIN note_tags nt ON nt.note_id = notes.id");
+            // The association row carries its own `user_id`; join on it so a
+            // tag of another account can never match.
+            sql.push_str(" INNER JOIN note_tags nt ON nt.note_id = notes.id AND nt.user_id = notes.user_id");
         }
+        wheres.push("notes.user_id = ?".into());
+        binds.push(BindValue::Str(user_id.to_string()));
         if let Some(ref nb) = filter.notebook_id {
             wheres.push("notes.notebook_id = ?".into());
             binds.push(BindValue::Str(nb.clone()));
@@ -141,34 +148,40 @@ impl INoteRepository for SqliteNoteRepository {
         Ok(rows)
     }
 
-    async fn get_by_file_path(&self, file_path: &str) -> Result<Option<NoteRow>, DbError> {
-        let row = sqlx::query_as::<_, NoteRow>("SELECT * FROM notes WHERE file_path = ?")
+    async fn get_by_file_path(&self, file_path: &str, user_id: &str) -> Result<Option<NoteRow>, DbError> {
+        let row = sqlx::query_as::<_, NoteRow>("SELECT * FROM notes WHERE file_path = ? AND user_id = ?")
             .bind(file_path)
+            .bind(user_id)
             .fetch_optional(&self.pool)
             .await?;
         Ok(row)
     }
 
-    async fn list_by_notebook(&self, notebook_id: &str) -> Result<Vec<NoteRow>, DbError> {
-        let rows = sqlx::query_as::<_, NoteRow>("SELECT * FROM notes WHERE notebook_id = ? ORDER BY updated_at DESC")
-            .bind(notebook_id)
-            .fetch_all(&self.pool)
-            .await?;
+    async fn list_by_notebook(&self, notebook_id: &str, user_id: &str) -> Result<Vec<NoteRow>, DbError> {
+        let rows = sqlx::query_as::<_, NoteRow>(
+            "SELECT * FROM notes WHERE notebook_id = ? AND user_id = ? ORDER BY updated_at DESC",
+        )
+        .bind(notebook_id)
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?;
         Ok(rows)
     }
 
-    async fn list_all_paths(&self) -> Result<Vec<(String, String, i64)>, DbError> {
-        let rows: Vec<(String, String, i64)> = sqlx::query_as("SELECT id, file_path, updated_at FROM notes")
-            .fetch_all(&self.pool)
-            .await?;
+    async fn list_all_paths(&self, user_id: &str) -> Result<Vec<(String, String, i64)>, DbError> {
+        let rows: Vec<(String, String, i64)> =
+            sqlx::query_as("SELECT id, file_path, updated_at FROM notes WHERE user_id = ?")
+                .bind(user_id)
+                .fetch_all(&self.pool)
+                .await?;
         Ok(rows)
     }
 
     async fn upsert_by_file_path(&self, row: &NoteRow) -> Result<NoteRow, DbError> {
         let mut tx = self.pool.begin().await?;
         sqlx::query(
-            "INSERT INTO notes (id, file_path, title, notebook_id, summary, star, created_at, updated_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?) \
+            "INSERT INTO notes (id, file_path, title, notebook_id, summary, star, user_id, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) \
              ON CONFLICT(file_path) DO UPDATE SET \
                title = excluded.title, \
                notebook_id = excluded.notebook_id, \
@@ -182,12 +195,14 @@ impl INoteRepository for SqliteNoteRepository {
         .bind(&row.notebook_id)
         .bind(&row.summary)
         .bind(row.star)
+        .bind(&row.user_id)
         .bind(row.created_at)
         .bind(row.updated_at)
         .execute(&mut *tx)
         .await?;
-        let stored = sqlx::query_as::<_, NoteRow>("SELECT * FROM notes WHERE file_path = ?")
+        let stored = sqlx::query_as::<_, NoteRow>("SELECT * FROM notes WHERE file_path = ? AND user_id = ?")
             .bind(&row.file_path)
+            .bind(&row.user_id)
             .fetch_one(&mut *tx)
             .await?;
         tx.commit().await?;
@@ -231,6 +246,8 @@ mod tests {
     use super::*;
     use crate::init_database_memory;
 
+    const USER: &str = "user_alice";
+
     async fn setup() -> (SqliteNoteRepository, crate::Database) {
         let db = init_database_memory().await.expect("init db");
         let repo = SqliteNoteRepository::new(db.pool().clone());
@@ -246,6 +263,7 @@ mod tests {
             notebook_id: notebook_id.map(|s| s.to_string()),
             summary: Some("Day 1 plan".into()),
             star: 0,
+            user_id: USER.into(),
             created_at: now,
             updated_at: now,
         }
@@ -257,19 +275,20 @@ mod tests {
         let row = make_row("nt_1", "notes/nt_1.md", Some("nb_parent"));
         repo.insert(&row).await.unwrap();
 
-        let found = repo.get_by_id("nt_1").await.unwrap().expect("found");
+        let found = repo.get_by_id("nt_1", USER).await.unwrap().expect("found");
         assert_eq!(found.id, "nt_1");
         assert_eq!(found.file_path, "notes/nt_1.md");
         assert_eq!(found.title, "Tokyo");
         assert_eq!(found.notebook_id.as_deref(), Some("nb_parent"));
         assert_eq!(found.summary.as_deref(), Some("Day 1 plan"));
         assert_eq!(found.star, 0);
+        assert_eq!(found.user_id, USER);
     }
 
     #[tokio::test]
     async fn get_by_id_returns_none_for_missing() {
         let (repo, _db) = setup().await;
-        let result = repo.get_by_id("nt_missing").await.unwrap();
+        let result = repo.get_by_id("nt_missing", USER).await.unwrap();
         assert!(result.is_none());
     }
 
@@ -279,7 +298,11 @@ mod tests {
         let row = make_row("nt_2", "notes/nt_2.md", Some("nb_parent"));
         repo.insert(&row).await.unwrap();
 
-        let found = repo.get_by_file_path("notes/nt_2.md").await.unwrap().expect("found");
+        let found = repo
+            .get_by_file_path("notes/nt_2.md", USER)
+            .await
+            .unwrap()
+            .expect("found");
         assert_eq!(found.id, "nt_2");
     }
 
@@ -296,7 +319,7 @@ mod tests {
             .await
             .unwrap();
 
-        let parent_notes = repo.list_by_notebook("nb_parent").await.unwrap();
+        let parent_notes = repo.list_by_notebook("nb_parent", USER).await.unwrap();
         assert_eq!(parent_notes.len(), 2);
         assert!(
             parent_notes
@@ -304,7 +327,7 @@ mod tests {
                 .all(|n| n.notebook_id.as_deref() == Some("nb_parent"))
         );
 
-        let other_notes = repo.list_by_notebook("nb_other").await.unwrap();
+        let other_notes = repo.list_by_notebook("nb_other", USER).await.unwrap();
         assert_eq!(other_notes.len(), 1);
         assert_eq!(other_notes[0].id, "nt_c");
     }
@@ -323,7 +346,7 @@ mod tests {
             starred: Some(true),
             ..Default::default()
         };
-        let only_starred = repo.list_filtered(&filter).await.unwrap();
+        let only_starred = repo.list_filtered(&filter, USER).await.unwrap();
         assert_eq!(only_starred.len(), 1);
         assert_eq!(only_starred[0].id, "nt_s1");
     }
@@ -341,7 +364,7 @@ mod tests {
             offset: Some(1),
             ..Default::default()
         };
-        let page = repo.list_filtered(&filter).await.unwrap();
+        let page = repo.list_filtered(&filter, USER).await.unwrap();
         assert_eq!(page.len(), 2);
     }
 
@@ -356,9 +379,9 @@ mod tests {
             title: Some("Renamed".into()),
             ..Default::default()
         };
-        repo.update("nt_u1", &params).await.unwrap();
+        repo.update("nt_u1", USER, &params).await.unwrap();
 
-        let updated = repo.get_by_id("nt_u1").await.unwrap().unwrap();
+        let updated = repo.get_by_id("nt_u1", USER).await.unwrap().unwrap();
         assert_eq!(updated.title, "Renamed");
         assert!(updated.updated_at >= updated.created_at);
     }
@@ -374,9 +397,9 @@ mod tests {
             notebook_id: Some(None),
             ..Default::default()
         };
-        repo.update("nt_u2", &params).await.unwrap();
+        repo.update("nt_u2", USER, &params).await.unwrap();
 
-        let updated = repo.get_by_id("nt_u2").await.unwrap().unwrap();
+        let updated = repo.get_by_id("nt_u2", USER).await.unwrap().unwrap();
         assert!(updated.notebook_id.is_none());
     }
 
@@ -387,7 +410,7 @@ mod tests {
             title: Some("X".into()),
             ..Default::default()
         };
-        let err = repo.update("nt_nope", &params).await.unwrap_err();
+        let err = repo.update("nt_nope", USER, &params).await.unwrap_err();
         assert!(matches!(err, DbError::NotFound(_)));
     }
 
@@ -396,15 +419,15 @@ mod tests {
         let (repo, _db) = setup().await;
         repo.insert(&make_row("nt_d1", "notes/nt_d1.md", None)).await.unwrap();
 
-        repo.delete("nt_d1").await.unwrap();
-        let result = repo.get_by_id("nt_d1").await.unwrap();
+        repo.delete("nt_d1", USER).await.unwrap();
+        let result = repo.get_by_id("nt_d1", USER).await.unwrap();
         assert!(result.is_none());
     }
 
     #[tokio::test]
     async fn delete_nonexistent_returns_not_found() {
         let (repo, _db) = setup().await;
-        let err = repo.delete("nt_nope").await.unwrap_err();
+        let err = repo.delete("nt_nope", USER).await.unwrap_err();
         assert!(matches!(err, DbError::NotFound(_)));
     }
 
@@ -414,7 +437,7 @@ mod tests {
         repo.insert(&make_row("nt_p1", "notes/nt_p1.md", None)).await.unwrap();
         repo.insert(&make_row("nt_p2", "notes/nt_p2.md", None)).await.unwrap();
 
-        let paths = repo.list_all_paths().await.unwrap();
+        let paths = repo.list_all_paths(USER).await.unwrap();
         assert_eq!(paths.len(), 2);
     }
 
