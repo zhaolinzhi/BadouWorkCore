@@ -182,7 +182,7 @@ impl NotebookService {
         let now = now_ms();
 
         // Write the raw Markdown body — no metadata block.
-        self.file_store.write(&file_path, &req.content).await?;
+        self.file_store.write(&file_path, &req.content, user_id).await?;
 
         let row = NoteRow {
             id: id.clone(),
@@ -196,7 +196,7 @@ impl NotebookService {
             updated_at: now,
         };
         if let Err(e) = self.note_repo.insert(&row).await {
-            let _ = self.file_store.delete(&file_path).await;
+            let _ = self.file_store.delete(&file_path, user_id).await;
             return Err(e.into());
         }
 
@@ -258,7 +258,7 @@ impl NotebookService {
             .get_by_id(id, user_id)
             .await?
             .ok_or_else(|| NotebookError::NoteNotFound(id.to_owned()))?;
-        match self.file_store.read(&row.file_path).await {
+        match self.file_store.read(&row.file_path, user_id).await {
             Ok(content) => Ok(RawNoteResponse { id: row.id, content }),
             Err(NotebookError::FileNotFound(p)) => {
                 tracing::warn!(note_id = %row.id, file = %p, "raw fetch auto-repair: deleting orphan row");
@@ -332,7 +332,7 @@ impl NotebookService {
         // Only rewrite the file when content is provided. Metadata-only
         // updates touch SQLite only — the file body is opaque.
         if let Some(new_content) = &req.content {
-            self.file_store.write(&existing.file_path, new_content).await?;
+            self.file_store.write(&existing.file_path, new_content, user_id).await?;
         }
 
         let star_i64 = req.star.map(|b| if b { 1 } else { 0 });
@@ -370,7 +370,7 @@ impl NotebookService {
             .await?
             .ok_or_else(|| NotebookError::NoteNotFound(id.to_owned()))?;
         self.note_repo.delete(id, user_id).await?;
-        let _ = self.file_store.delete(&row.file_path).await;
+        let _ = self.file_store.delete(&row.file_path, user_id).await;
         Ok(())
     }
 

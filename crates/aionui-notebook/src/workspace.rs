@@ -109,6 +109,15 @@ pub fn generate_md_filename() -> String {
     format!("{id}.md")
 }
 
+/// 当前用户的笔记文件目录。
+///
+/// 与 conversation 服务保持一致：用户 id 转换成文件安全的目录名，放在
+/// `users/` 之下。
+pub fn user_notes_dir(root: &Path, user_id: &str) -> PathBuf {
+    let dir = aionui_common::user_dir_name(user_id).unwrap_or_else(|_| user_id.to_owned());
+    root.join("users").join(dir).join(NOTES_SUBDIR)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

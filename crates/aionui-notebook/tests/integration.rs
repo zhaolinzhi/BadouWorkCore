@@ -17,7 +17,7 @@ async fn setup() -> (NotebookService, WorkspaceConfig, TempDir) {
     let pool = db.pool().clone();
     let tmp = tempfile::tempdir().unwrap();
     let workspace = WorkspaceConfig::resolve(tmp.path()).expect("workspace");
-    let file_store = MdFileStore::new(workspace.notes_dir.clone());
+    let file_store = MdFileStore::new(tmp.path().to_path_buf());
 
     let notebook_repo: Arc<dyn INotebookRepository> = Arc::new(SqliteNotebookRepository::new(pool.clone()));
     let note_repo: Arc<dyn INoteRepository> = Arc::new(SqliteNoteRepository::new(pool.clone()));
@@ -344,14 +344,16 @@ async fn reconcile_ignores_external_files() {
     let pool = db.pool().clone();
     let tmp = tempfile::tempdir().unwrap();
     let workspace = WorkspaceConfig::resolve(tmp.path()).unwrap();
-    let file_store = MdFileStore::new(workspace.notes_dir.clone());
+    let file_store = MdFileStore::new(tmp.path().to_path_buf());
     let notebook_repo: Arc<dyn INotebookRepository> = Arc::new(SqliteNotebookRepository::new(pool.clone()));
     let note_repo: Arc<dyn INoteRepository> = Arc::new(SqliteNoteRepository::new(pool.clone()));
     let tag_repo: Arc<dyn ITagRepository> = Arc::new(SqliteTagRepository::new(pool.clone()));
 
     // Drop an external MD file in the workspace before reconcile.
     // New behavior: stray files are NOT auto-ingested.
-    let raw_path = workspace.notes_dir.join("external.md");
+    // sync 目前固定使用默认账号，因此文件要落在该账号的目录里。
+    let raw_path = aionui_notebook::workspace::user_notes_dir(tmp.path(), "system_default_user").join("external.md");
+    std::fs::create_dir_all(raw_path.parent().unwrap()).unwrap();
     std::fs::write(&raw_path, "manually written body").unwrap();
 
     let sync = WorkspaceSync::new(
@@ -382,7 +384,7 @@ async fn reconcile_picks_up_external_file_removal() {
     let pool = db.pool().clone();
     let tmp = tempfile::tempdir().unwrap();
     let workspace = WorkspaceConfig::resolve(tmp.path()).unwrap();
-    let file_store = MdFileStore::new(workspace.notes_dir.clone());
+    let file_store = MdFileStore::new(tmp.path().to_path_buf());
     let notebook_repo: Arc<dyn INotebookRepository> = Arc::new(SqliteNotebookRepository::new(pool.clone()));
     let note_repo: Arc<dyn INoteRepository> = Arc::new(SqliteNoteRepository::new(pool.clone()));
     let tag_repo: Arc<dyn ITagRepository> = Arc::new(SqliteTagRepository::new(pool.clone()));
@@ -443,7 +445,7 @@ async fn duplicate_notebook_name_returns_error() {
 
 #[tokio::test]
 async fn get_note_raw_triggers_auto_repair_on_missing_file() {
-    let (service, workspace, _tmp) = setup().await;
+    let (service, _workspace, tmp) = setup().await;
     let note = service
         .create_note(
             "",
@@ -458,7 +460,10 @@ async fn get_note_raw_triggers_auto_repair_on_missing_file() {
         )
         .await
         .unwrap();
-    std::fs::remove_file(workspace.to_absolute(&note.file_path)).unwrap();
+    // 正文落在账号自己的目录里，删除时要用该目录拼出绝对路径。
+    let abs = aionui_notebook::workspace::user_notes_dir(tmp.path(), TEST_USER)
+        .join(note.file_path.rsplit('/').next().unwrap());
+    std::fs::remove_file(&abs).unwrap();
 
     let raw = service.get_note_raw(&note.id, TEST_USER).await.unwrap();
     assert_eq!(raw.content, "");
@@ -608,4 +613,128 @@ async fn notebook_name_uniqueness_is_per_user() {
         .await
         .unwrap_err();
     assert!(matches!(err, NotebookError::DuplicateName(_)));
+}
+
+/// 笔记正文必须落在所属账号自己的目录里，而不是共享的 `notes/`。
+#[tokio::test]
+async fn note_files_land_in_the_owning_users_directory() {
+    let (service, _ws, tmp) = setup().await;
+
+    let nb = service
+        .create_notebook(
+            CreateNotebookRequest {
+                name: "Ideas".into(),
+                description: None,
+            },
+            USER_ALICE,
+        )
+        .await
+        .unwrap();
+
+    let note = service
+        .create_note(
+            &nb.id,
+            CreateNoteRequest {
+                title: "Hello".into(),
+                content: "body".into(),
+                notebook_id: None,
+                tags: vec![],
+                summary: None,
+            },
+            USER_ALICE,
+        )
+        .await
+        .unwrap();
+
+    // 正文必须位于 <root>/users/alice/notes/ 下，而不是共享的 notes/。
+    let expected = tmp.path().join("users").join("alice").join("notes");
+    let file_name = note.file_path.rsplit('/').next().unwrap();
+    assert!(
+        expected.join(file_name).exists(),
+        "the note body must be written under the owner's directory: {}",
+        expected.display()
+    );
+}
+
+/// 两个账号的笔记正文必须落在不同的目录里。
+#[tokio::test]
+async fn note_files_of_two_users_do_not_share_a_directory() {
+    let (service, _ws, tmp) = setup().await;
+
+    let alice_note = service
+        .create_note(
+            "",
+            CreateNoteRequest {
+                title: "A".into(),
+                content: "alice body".into(),
+                notebook_id: None,
+                tags: vec![],
+                summary: None,
+            },
+            USER_ALICE,
+        )
+        .await
+        .unwrap();
+    let bob_note = service
+        .create_note(
+            "",
+            CreateNoteRequest {
+                title: "B".into(),
+                content: "bob body".into(),
+                notebook_id: None,
+                tags: vec![],
+                summary: None,
+            },
+            USER_BOB,
+        )
+        .await
+        .unwrap();
+
+    let alice_dir = tmp.path().join("users").join("alice").join("notes");
+    let bob_dir = tmp.path().join("users").join("bob").join("notes");
+    let alice_file = alice_note.file_path.rsplit('/').next().unwrap();
+    let bob_file = bob_note.file_path.rsplit('/').next().unwrap();
+
+    assert!(
+        alice_dir.join(alice_file).exists(),
+        "alice's body must be under her own directory"
+    );
+    assert!(
+        bob_dir.join(bob_file).exists(),
+        "bob's body must be under his own directory"
+    );
+    // 共享的 notes/ 目录下不应出现任何正文文件。
+    assert!(!tmp.path().join("notes").join(alice_file).exists());
+    assert!(!tmp.path().join("notes").join(bob_file).exists());
+}
+
+/// 数据库里保存的 `file_path` 仍然是相对路径 `notes/<uuid>.md`。
+#[tokio::test]
+async fn stored_file_path_stays_relative_to_the_workspace_root() {
+    let (service, _ws, _tmp) = setup().await;
+    let note = service
+        .create_note(
+            "",
+            CreateNoteRequest {
+                title: "T".into(),
+                content: "x".into(),
+                notebook_id: None,
+                tags: vec![],
+                summary: None,
+            },
+            USER_ALICE,
+        )
+        .await
+        .unwrap();
+
+    assert!(
+        note.file_path.starts_with("notes/"),
+        "unexpected file_path: {}",
+        note.file_path
+    );
+    assert!(
+        !note.file_path.contains("users/"),
+        "unexpected file_path: {}",
+        note.file_path
+    );
 }

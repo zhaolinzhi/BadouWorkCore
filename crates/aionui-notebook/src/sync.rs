@@ -68,7 +68,9 @@ impl WorkspaceSync {
         let mut report = WorkspaceSyncReport::default();
 
         // 1. Enumerate files on disk.
-        let on_disk = self.file_store.list_md_files().await?;
+        // TODO(Task 8): 这里的账号是写死的占位账号，后续要把真实的 `user_id`
+        // 透传进来，并按账号分别扫描各自的目录。
+        let on_disk = self.file_store.list_md_files(DEFAULT_USER_ID).await?;
         let disk_paths: HashSet<String> = on_disk.iter().map(|(name, _, _)| format!("notes/{name}")).collect();
 
         // 2. Enumerate DB rows.
