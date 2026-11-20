@@ -71,6 +71,10 @@ struct NoteListResponse {
 /// 构建 `notebook` 子路由，挂在 Axum Router 上。
 ///
 /// 路由前缀均为 `/api/...`，具体见 [`notebook_routes`] 中每条 `.route(...)`。
+///
+/// 正文按账号存放，因此读接口必须在读之前把该账号的工作区与数据库索引对齐；
+/// 这一步由 service 的读路径内部完成（`ensure_user_workspace_synced`），
+/// 同一个账号只对齐一次，路由本身不需要额外处理。
 pub fn notebook_routes(state: NotebookRouterState) -> Router {
     Router::new()
         // Notebooks

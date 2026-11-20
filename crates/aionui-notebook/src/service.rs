@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
 
 use aionui_api_types::{
     CreateNoteRequest, CreateNotebookRequest, ListNotesQuery, NoteResponse, NotebookResponse, RawNoteResponse,
@@ -12,6 +13,7 @@ use aionui_db::{
 
 use crate::error::NotebookError;
 use crate::file_store::MdFileStore;
+use crate::sync::WorkspaceSync;
 use crate::workspace::{WorkspaceConfig, generate_md_filename};
 
 #[derive(Clone)]
@@ -25,6 +27,10 @@ pub struct NotebookService {
     #[allow(dead_code)]
     workspace: WorkspaceConfig,
     pool: SqlitePool,
+    /// 磁盘与索引的对齐器。reconcile 必须按账号执行，因此由 service 在读路径上按需触发。
+    sync: WorkspaceSync,
+    /// 已完成首次 reconcile 的账号。同一个账号只对齐一次。
+    reconciled_users: Arc<Mutex<HashSet<String>>>,
 }
 
 impl NotebookService {
@@ -37,6 +43,13 @@ impl NotebookService {
         workspace: WorkspaceConfig,
         pool: SqlitePool,
     ) -> Self {
+        let sync = WorkspaceSync::new(
+            workspace.clone(),
+            file_store.clone(),
+            note_repo.clone(),
+            notebook_repo.clone(),
+            tag_repo.clone(),
+        );
         Self {
             notebook_repo,
             note_repo,
@@ -44,7 +57,26 @@ impl NotebookService {
             file_store,
             workspace,
             pool,
+            sync,
+            reconciled_users: Arc::new(Mutex::new(HashSet::new())),
         }
+    }
+
+    /// 确保该账号的工作区与数据库索引一致。同一账号只执行一次。
+    ///
+    /// 正文现在按账号落在各自的目录里，reconcile 只能按账号做：一次针对某个账号的
+    /// reconcile 不能删掉别的账号的行。因此这里按账号记账，谁的目录第一次被读，
+    /// 才为谁跑一次对齐。
+    pub async fn ensure_user_workspace_synced(&self, user_id: &str) -> Result<(), NotebookError> {
+        let should_run = {
+            let mut guard = self.reconciled_users.lock().unwrap();
+            guard.insert(user_id.to_owned())
+        };
+        if !should_run {
+            return Ok(());
+        }
+        self.sync.reconcile_for(user_id).await?;
+        Ok(())
     }
 
     // ── Notebooks ────────────────────────────────────────────────
@@ -81,6 +113,7 @@ impl NotebookService {
 
     /// 列出当前账号的所有笔记本（不分页，按仓库默认排序）。
     pub async fn list_notebooks(&self, user_id: &str) -> Result<Vec<NotebookResponse>, NotebookError> {
+        self.ensure_user_workspace_synced(user_id).await?;
         let rows = self.notebook_repo.list_all(user_id).await?;
         Ok(rows.iter().map(to_notebook_response).collect())
     }
@@ -214,6 +247,7 @@ impl NotebookService {
         notebook_id: &str,
         user_id: &str,
     ) -> Result<Vec<NoteResponse>, NotebookError> {
+        self.ensure_user_workspace_synced(user_id).await?;
         if self.notebook_repo.get_by_id(notebook_id, user_id).await?.is_none() {
             return Err(NotebookError::NotebookNotFound(notebook_id.to_owned()));
         }
@@ -227,6 +261,7 @@ impl NotebookService {
         query: &ListNotesQuery,
         user_id: &str,
     ) -> Result<Vec<NoteResponse>, NotebookError> {
+        self.ensure_user_workspace_synced(user_id).await?;
         let filter = ListNotesFilter {
             notebook_id: query.notebook_id.clone(),
             tag: query.tag.clone(),
@@ -240,6 +275,7 @@ impl NotebookService {
 
     /// 按 id 获取笔记元数据（含标签），不读文件正文。
     pub async fn get_note(&self, id: &str, user_id: &str) -> Result<NoteResponse, NotebookError> {
+        self.ensure_user_workspace_synced(user_id).await?;
         let row = self
             .note_repo
             .get_by_id(id, user_id)

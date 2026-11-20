@@ -7,6 +7,13 @@ const ASSETS_SUBDIR: &str = "assets";
 const BACKUP_SUBDIR: &str = "backup";
 const INDEX_DB: &str = ".index.db";
 
+/// 多账号改造之前，本机的默认账号 id。
+///
+/// 那时所有账号的正文都写在同一个共享的 `notes/` 目录里，数据库行也全部属于这个账号。
+/// 行级 adopt（`adopt_system_default_data`）会把这些行改属第一个外部账号，
+/// 但正文还留在默认账号目录下——同步层据此把正文交接到新主人手里。
+pub const LEGACY_DEFAULT_USER_ID: &str = "system_default_user";
+
 /// Resolved absolute paths for the notebook workspace.
 #[derive(Debug, Clone)]
 pub struct WorkspaceConfig {

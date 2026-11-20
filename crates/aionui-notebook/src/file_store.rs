@@ -118,11 +118,19 @@ impl MdFileStore {
     ///
     /// 供同步层扫描磁盘笔记使用。
     pub async fn list_md_files(&self, user_id: &str) -> Result<Vec<(String, PathBuf, i64)>, NotebookError> {
-        let notes_dir = self.notes_dir_for(user_id);
+        self.list_md_files_in_dir(&self.notes_dir_for(user_id)).await
+    }
+
+    /// 枚举指定目录下所有 `.md` 文件，返回 `(相对路径, 绝对路径, mtime_ms)` 三元组列表。
+    ///
+    /// 相对路径以 `/` 分隔，相对于 `dir` 本身（不含目录名）。
+    /// 供同步层扫描旧版共享目录时使用。
+    pub async fn list_md_files_in_dir(&self, dir: &Path) -> Result<Vec<(String, PathBuf, i64)>, NotebookError> {
+        let notes_dir = dir.to_path_buf();
         let notes_dir_for_err = notes_dir.clone();
         let result = tokio::task::spawn_blocking(move || -> std::io::Result<Vec<(String, PathBuf, i64)>> {
             let mut out = Vec::new();
-            walk_md(&notes_dir, &mut out)?;
+            walk_md(&notes_dir, &notes_dir, &mut out)?;
             Ok(out)
         })
         .await
@@ -147,8 +155,10 @@ fn strip_notes_prefix(file_path: &str) -> PathBuf {
     }
 }
 
-/// 递归遍历 `dir`，把所有 `.md` 文件的 `(文件名, 绝对路径, mtime_ms)` 收集到 `out`。
-fn walk_md(dir: &Path, out: &mut Vec<(String, PathBuf, i64)>) -> std::io::Result<()> {
+/// 递归遍历 `dir`，把所有 `.md` 文件的 `(相对路径, 绝对路径, mtime_ms)` 收集到 `out`。
+///
+/// 相对路径相对于 `root`（即 `dir` 本身），用 `/` 分隔。
+fn walk_md(dir: &Path, root: &Path, out: &mut Vec<(String, PathBuf, i64)>) -> std::io::Result<()> {
     if !dir.is_dir() {
         return Ok(());
     }
@@ -156,7 +166,7 @@ fn walk_md(dir: &Path, out: &mut Vec<(String, PathBuf, i64)>) -> std::io::Result
         let entry = entry?;
         let path = entry.path();
         if path.is_dir() {
-            walk_md(&path, out)?;
+            walk_md(&path, root, out)?;
         } else if path.extension().and_then(|s| s.to_str()) == Some("md") {
             let abs = path.clone();
             let mtime = entry
@@ -167,9 +177,12 @@ fn walk_md(dir: &Path, out: &mut Vec<(String, PathBuf, i64)>) -> std::io::Result
                 .map(|d| d.as_millis() as i64)
                 .unwrap_or(0);
             let rel = path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/");
             out.push((rel, abs, mtime));
         }
     }

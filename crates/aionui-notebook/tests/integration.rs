@@ -351,7 +351,7 @@ async fn reconcile_ignores_external_files() {
 
     // Drop an external MD file in the workspace before reconcile.
     // New behavior: stray files are NOT auto-ingested.
-    // sync 目前固定使用默认账号，因此文件要落在该账号的目录里。
+    // 正文按账号存放，因此文件要落在被 reconcile 的账号目录里。
     let raw_path = aionui_notebook::workspace::user_notes_dir(tmp.path(), "system_default_user").join("external.md");
     std::fs::create_dir_all(raw_path.parent().unwrap()).unwrap();
     std::fs::write(&raw_path, "manually written body").unwrap();
@@ -363,7 +363,7 @@ async fn reconcile_ignores_external_files() {
         notebook_repo,
         tag_repo.clone(),
     );
-    let report = sync.reconcile().await.unwrap();
+    let report = sync.reconcile_for("system_default_user").await.unwrap();
     // No ingestion happened.
     assert_eq!(report.inserted, 0);
     assert_eq!(report.removed, 0);
@@ -406,7 +406,7 @@ async fn reconcile_picks_up_external_file_removal() {
         .unwrap();
 
     let sync = WorkspaceSync::new(workspace, file_store, note_repo.clone(), notebook_repo, tag_repo);
-    let report = sync.reconcile().await.unwrap();
+    let report = sync.reconcile_for("system_default_user").await.unwrap();
     assert_eq!(report.removed, 1);
     assert!(
         note_repo
@@ -737,4 +737,242 @@ async fn stored_file_path_stays_relative_to_the_workspace_root() {
         "unexpected file_path: {}",
         note.file_path
     );
+}
+
+// ── 按账号 reconcile ────────────────────────────────────────────
+
+/// 构造一份独立的 sync 夹具，返回 `(sync, note_repo, 临时目录)`。
+async fn sync_fixture() -> (WorkspaceSync, Arc<dyn INoteRepository>, TempDir) {
+    let db = init_database_memory().await.unwrap();
+    let pool = db.pool().clone();
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = WorkspaceConfig::resolve(tmp.path()).unwrap();
+    let file_store = MdFileStore::new(tmp.path().to_path_buf());
+    let notebook_repo: Arc<dyn INotebookRepository> = Arc::new(SqliteNotebookRepository::new(pool.clone()));
+    let note_repo: Arc<dyn INoteRepository> = Arc::new(SqliteNoteRepository::new(pool.clone()));
+    let tag_repo: Arc<dyn ITagRepository> = Arc::new(SqliteTagRepository::new(pool.clone()));
+
+    let sync = WorkspaceSync::new(workspace, file_store, note_repo.clone(), notebook_repo, tag_repo);
+    (sync, note_repo, tmp)
+}
+
+/// 插入一行笔记（不落盘），用于构造“磁盘上没有正文”的孤儿行。
+async fn insert_note_row(note_repo: &Arc<dyn INoteRepository>, id: &str, file_path: &str, user_id: &str) {
+    note_repo
+        .insert(&NoteRow {
+            id: id.into(),
+            file_path: file_path.into(),
+            title: id.into(),
+            notebook_id: None,
+            summary: None,
+            star: 0,
+            user_id: user_id.into(),
+            created_at: aionui_common::now_ms(),
+            updated_at: aionui_common::now_ms(),
+        })
+        .await
+        .unwrap();
+}
+
+/// 为某个账号在磁盘上写一个正文文件，并插入对应的数据库行。
+async fn seed_note(note_repo: &Arc<dyn INoteRepository>, tmp: &TempDir, id: &str, file_name: &str, user_id: &str) {
+    let dir = aionui_notebook::workspace::user_notes_dir(tmp.path(), user_id);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join(file_name), "body").unwrap();
+    insert_note_row(note_repo, id, &format!("notes/{file_name}"), user_id).await;
+}
+
+/// 为某个账号在**旧版共享目录**里写一个正文文件，并插入对应的数据库行。
+///
+/// 模拟多账号改造之前的状态：所有账号的正文都写在同一个共享的 `notes/` 目录里。
+async fn seed_legacy_note(
+    note_repo: &Arc<dyn INoteRepository>,
+    tmp: &TempDir,
+    id: &str,
+    file_name: &str,
+    user_id: &str,
+) {
+    let legacy_dir = tmp.path().join("notes");
+    std::fs::create_dir_all(&legacy_dir).unwrap();
+    std::fs::write(legacy_dir.join(file_name), "legacy body").unwrap();
+    insert_note_row(note_repo, id, &format!("notes/{file_name}"), user_id).await;
+}
+
+/// reconcile 一个账号，绝不能删掉另一个账号的行。
+#[tokio::test]
+async fn reconcile_for_one_user_keeps_another_users_rows() {
+    let (sync, note_repo, tmp) = sync_fixture().await;
+    seed_note(&note_repo, &tmp, "nt_alice", "alice.md", USER_ALICE).await;
+    seed_note(&note_repo, &tmp, "nt_bob", "bob.md", USER_BOB).await;
+
+    let report = sync.reconcile_for(USER_ALICE).await.unwrap();
+
+    // Alice 的正文在自己的目录里，行必须保留。
+    assert_eq!(report.removed, 0);
+    assert!(note_repo.get_by_id("nt_alice", USER_ALICE).await.unwrap().is_some());
+    // Bob 的正文在 Bob 自己的目录里，Alice 的 reconcile 不得动它。
+    assert!(note_repo.get_by_id("nt_bob", USER_BOB).await.unwrap().is_some());
+}
+
+/// reconcile 一个账号时，只清理这个账号自己的孤儿行。
+#[tokio::test]
+async fn reconcile_for_one_user_only_deletes_its_own_orphan_rows() {
+    let (sync, note_repo, _tmp) = sync_fixture().await;
+    insert_note_row(&note_repo, "nt_ghost_alice", "notes/missing_alice.md", USER_ALICE).await;
+    insert_note_row(&note_repo, "nt_ghost_bob", "notes/missing_bob.md", USER_BOB).await;
+
+    let report = sync.reconcile_for(USER_ALICE).await.unwrap();
+
+    assert_eq!(report.removed, 1);
+    assert!(
+        note_repo
+            .get_by_id("nt_ghost_alice", USER_ALICE)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    // Bob 的孤儿行不在 Alice 的作用域内，必须保留。
+    assert!(note_repo.get_by_id("nt_ghost_bob", USER_BOB).await.unwrap().is_some());
+}
+
+/// 旧版共享目录里的正文必须被迁移进拥有它的账号目录。
+#[tokio::test]
+async fn legacy_shared_notes_are_migrated_into_the_owning_users_directory() {
+    let (sync, note_repo, tmp) = sync_fixture().await;
+    seed_legacy_note(&note_repo, &tmp, "nt_legacy", "legacy.md", TEST_USER).await;
+
+    let legacy_file = tmp.path().join("notes").join("legacy.md");
+    let target_file = aionui_notebook::workspace::user_notes_dir(tmp.path(), TEST_USER).join("legacy.md");
+    assert!(legacy_file.exists());
+
+    sync.reconcile_for(TEST_USER).await.unwrap();
+
+    // 正文已经搬进该账号的目录，旧目录里不再有它。
+    assert!(
+        target_file.exists(),
+        "legacy body must be migrated into the owner's directory"
+    );
+    assert!(
+        !legacy_file.exists(),
+        "the legacy shared directory must not keep the body"
+    );
+    // 行必须保留（正文没有丢）。
+    assert!(note_repo.get_by_id("nt_legacy", TEST_USER).await.unwrap().is_some());
+}
+
+/// 别的账号不能把旧版共享目录里的正文抢走。
+#[tokio::test]
+async fn legacy_shared_notes_are_not_stolen_by_another_user() {
+    let (sync, note_repo, tmp) = sync_fixture().await;
+    seed_legacy_note(&note_repo, &tmp, "nt_legacy", "legacy.md", USER_ALICE).await;
+
+    let legacy_file = tmp.path().join("notes").join("legacy.md");
+
+    // Bob 的 reconcile 不能动 Alice 的正文。
+    sync.reconcile_for(USER_BOB).await.unwrap();
+    assert!(legacy_file.exists(), "another user must not steal the legacy body");
+    assert!(note_repo.get_by_id("nt_legacy", USER_ALICE).await.unwrap().is_some());
+
+    // 真正的主人 reconcile 时才搬走。
+    sync.reconcile_for(USER_ALICE).await.unwrap();
+    let target_file = aionui_notebook::workspace::user_notes_dir(tmp.path(), USER_ALICE).join("legacy.md");
+    assert!(target_file.exists(), "the owning user must receive the legacy body");
+    assert!(!legacy_file.exists());
+}
+
+/// 行级 adopt 把行改属新主人之后，正文要跟着搬到新主人目录里。
+///
+/// `adopt_system_default_data` 只改数据库里的归属，正文还在默认账号目录下；
+/// 新主人第一次读笔记时把正文接过来，否则 reconcile 会把它当成孤儿删掉。
+#[tokio::test]
+async fn adopted_notes_are_handed_over_to_the_new_owner() {
+    let (sync, note_repo, tmp) = sync_fixture().await;
+
+    // 正文在默认账号目录下，行已经属于 Alice（模拟 adopt 之后的状态）。
+    let default_dir = aionui_notebook::workspace::user_notes_dir(tmp.path(), TEST_USER);
+    std::fs::create_dir_all(&default_dir).unwrap();
+    std::fs::write(default_dir.join("adopted.md"), "body").unwrap();
+    insert_note_row(&note_repo, "nt_adopted", "notes/adopted.md", USER_ALICE).await;
+
+    let report = sync.reconcile_for(USER_ALICE).await.unwrap();
+
+    // 正文搬到了 Alice 自己的目录，行也保住了。
+    let alice_dir = aionui_notebook::workspace::user_notes_dir(tmp.path(), USER_ALICE);
+    assert!(
+        alice_dir.join("adopted.md").exists(),
+        "the adopted body must be handed over to the new owner"
+    );
+    assert_eq!(report.removed, 0);
+    assert!(note_repo.get_by_id("nt_adopted", USER_ALICE).await.unwrap().is_some());
+}
+
+/// 旧版目录迁移只做一次：迁移完成后第二个账号的 reconcile 不会再动它。
+#[tokio::test]
+async fn legacy_migration_runs_at_most_once() {
+    let (sync, note_repo, tmp) = sync_fixture().await;
+    seed_legacy_note(&note_repo, &tmp, "nt_legacy", "legacy.md", TEST_USER).await;
+
+    sync.reconcile_for(TEST_USER).await.unwrap();
+    let target_file = aionui_notebook::workspace::user_notes_dir(tmp.path(), TEST_USER).join("legacy.md");
+    assert!(target_file.exists());
+
+    // 迁移标记已经落盘，重复的 reconcile 不会再搬动任何东西。
+    let marker = tmp.path().join(".notes-legacy-migrated");
+    assert!(marker.exists(), "the one-shot migration marker must be written");
+
+    // 之后再造一个旧目录文件，重复 reconcile 也不该被搬走（迁移已结束）。
+    let stray = tmp.path().join("notes").join("stray.md");
+    std::fs::create_dir_all(tmp.path().join("notes")).unwrap();
+    std::fs::write(&stray, "stray").unwrap();
+    sync.reconcile_for(TEST_USER).await.unwrap();
+    assert!(
+        stray.exists(),
+        "the legacy migration must not run again after the marker is written"
+    );
+}
+
+/// 全新安装（没有旧版目录）时，reconcile 不会失败。
+#[tokio::test]
+async fn reconcile_without_legacy_directory_is_a_noop() {
+    let (sync, note_repo, tmp) = sync_fixture().await;
+    seed_note(&note_repo, &tmp, "nt_alice", "alice.md", USER_ALICE).await;
+
+    // 删掉旧版共享目录，模拟全新安装。
+    std::fs::remove_dir_all(tmp.path().join("notes")).unwrap();
+
+    let report = sync.reconcile_for(USER_ALICE).await.unwrap();
+    assert_eq!(report.removed, 0);
+    assert!(note_repo.get_by_id("nt_alice", USER_ALICE).await.unwrap().is_some());
+}
+
+// ── service 层的按账号同步 ──────────────────────────────────────
+
+/// 读路径会触发一次按账号的 reconcile，并且只跑一次。
+#[tokio::test]
+async fn read_paths_sync_the_user_workspace_once() {
+    let (service, _ws, _tmp) = setup().await;
+    let note = service
+        .create_note(
+            "",
+            CreateNoteRequest {
+                title: "T".into(),
+                content: "x".into(),
+                notebook_id: None,
+                tags: vec![],
+                summary: None,
+            },
+            USER_ALICE,
+        )
+        .await
+        .unwrap();
+
+    // 第一次读会触发 reconcile：把磁盘上的正文删掉后，行应当被清理掉。
+    service
+        .list_notes_filtered(&ListNotesQuery::default(), USER_ALICE)
+        .await
+        .unwrap();
+    service.ensure_user_workspace_synced(USER_ALICE).await.unwrap();
+    // 第二次 sync 已经被记住，不会重复执行。
+    service.ensure_user_workspace_synced(USER_ALICE).await.unwrap();
+    assert!(service.get_note(&note.id, USER_ALICE).await.is_ok());
 }
