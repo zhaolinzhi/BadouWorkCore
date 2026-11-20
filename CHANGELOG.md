@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.1.64](https://github.com/zhaolinzhi/BadouWorkCore/compare/v0.1.63...v0.1.64) (2026-11-20)
+
+
+### Features
+
+* **auth:** exempt bearer-authenticated requests from CSRF validation ([60cd79c](https://github.com/zhaolinzhi/BadouWorkCore/commit/60cd79c35583fd51a655384d7824db4d505f3b2e))
+* **auth:** extend session token lifetime to seven days ([13e41c4](https://github.com/zhaolinzhi/BadouWorkCore/commit/13e41c462afa6c56c17f79c7529283afdded4e5e))
+* **auth:** return the external session token in the response body ([5b4d04d](https://github.com/zhaolinzhi/BadouWorkCore/commit/5b4d04d18f95d20a061a07fa35f8715fbcd613a6))
+* **db:** add a user scope to the notes tables ([fe863d2](https://github.com/zhaolinzhi/BadouWorkCore/commit/fe863d2159bbc08cb7dda22d57a13721583e40fc))
+* **db:** scope the notes repositories by user id ([3a28513](https://github.com/zhaolinzhi/BadouWorkCore/commit/3a285132792bedec9d80ec285c12695c703eb9ff))
+* **notebook:** scope the notebook service by user id ([448b4fb](https://github.com/zhaolinzhi/BadouWorkCore/commit/448b4fb031974b1ab4c5b9c55d868ac0a9abb239))
+* **notebook:** store note bodies in a per-user directory ([0f689d2](https://github.com/zhaolinzhi/BadouWorkCore/commit/0f689d23e9d57afa61917b94af498eee9b44384e))
+
+
+### Bug Fixes
+
+* **auth:** keep CSRF validation for cookie-authenticated requests ([bb93d50](https://github.com/zhaolinzhi/BadouWorkCore/commit/bb93d507004a35e26f8d755fad8c05e7d04dd245))
+* **auth:** require a non-empty bearer token for the CSRF exemption ([e875b5b](https://github.com/zhaolinzhi/BadouWorkCore/commit/e875b5bf443f3dddca794725eed0753aa2405a0b))
+* **session:** use the renamed aionui-common and aionui-process crates ([b0b9496](https://github.com/zhaolinzhi/BadouWorkCore/commit/b0b9496742158b8075ef728db27fde713a8523e0))
+
+
+### Code Refactoring
+
+* **auth:** remove the duplicated session token field ([c251bf9](https://github.com/zhaolinzhi/BadouWorkCore/commit/c251bf931970e468a9e6eae920d5b99f43d81bfd))
+
 ## [0.1.63](https://github.com/iOfficeAI/AionCore/compare/v0.1.62...v0.1.63) (2026-08-10)
 
 
