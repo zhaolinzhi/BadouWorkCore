@@ -9,7 +9,7 @@ use axum::http::{Request, StatusCode};
 use serde_json::json;
 use tower::ServiceExt;
 
-use common::{body_json, build_app, json_with_token, setup_and_login};
+use common::{body_json, build_app, json_with_token, setup_and_login, setup_and_login_with_session_cookie};
 
 fn empty_post_with_token(uri: &str, token: &str, csrf: &str) -> Request<Body> {
     Request::builder()
@@ -22,11 +22,18 @@ fn empty_post_with_token(uri: &str, token: &str, csrf: &str) -> Request<Body> {
         .unwrap()
 }
 
-fn empty_post_with_auth_without_csrf(uri: &str, token: &str) -> Request<Body> {
+/// A cookie-authenticated POST that omits the CSRF header.
+///
+/// The WebUI browser flow authenticates with the `aionui-session` cookie the
+/// login response set, so the browser attaches that cookie automatically even
+/// when it also sends the bearer token. Such a request is ambiently
+/// authenticated and must still pass the double-submit check.
+fn empty_post_with_auth_without_csrf(uri: &str, token: &str, session_cookie: &str) -> Request<Body> {
     Request::builder()
         .method("POST")
         .uri(uri)
         .header("authorization", format!("Bearer {token}"))
+        .header("cookie", format!("aionui-session={session_cookie}"))
         .body(Body::empty())
         .unwrap()
 }
@@ -134,13 +141,15 @@ async fn conversation_active_lease_rejects_missing_auth() {
 #[tokio::test]
 async fn conversation_active_lease_rejects_missing_csrf() {
     let (mut app, services) = build_app().await;
-    let (token, csrf) = setup_and_login(&mut app, &services, "admin", "StrongP@ss1").await;
+    let (token, csrf, session_cookie) =
+        setup_and_login_with_session_cookie(&mut app, &services, "admin", "StrongP@ss1").await;
     let conversation_id = create_conversation(&mut app, &token, &csrf).await;
 
     let resp = app
         .oneshot(empty_post_with_auth_without_csrf(
             &format!("/api/conversations/{conversation_id}/active-lease"),
             &token,
+            &session_cookie,
         ))
         .await
         .unwrap();
@@ -235,7 +244,8 @@ async fn team_active_lease_rejects_missing_auth() {
 #[tokio::test]
 async fn team_active_lease_rejects_missing_csrf() {
     let (mut app, services) = build_app().await;
-    let (token, _csrf) = setup_and_login(&mut app, &services, "admin", "StrongP@ss1").await;
+    let (token, _csrf, session_cookie) =
+        setup_and_login_with_session_cookie(&mut app, &services, "admin", "StrongP@ss1").await;
     let owner = services.user_repo.find_by_username("admin").await.unwrap().unwrap();
     insert_team(&services, &owner.id, "team-csrf", vec![]).await;
 
@@ -243,6 +253,7 @@ async fn team_active_lease_rejects_missing_csrf() {
         .oneshot(empty_post_with_auth_without_csrf(
             "/api/teams/team-csrf/active-lease",
             &token,
+            &session_cookie,
         ))
         .await
         .unwrap();

@@ -18,6 +18,8 @@ pub struct NoteRow {
     pub notebook_id: Option<String>,
     pub summary: Option<String>,
     pub star: i64,
+    /// Owning account. Every read and write is scoped by this column.
+    pub user_id: String,
     pub created_at: TimestampMs,
     pub updated_at: TimestampMs,
 }
@@ -35,6 +37,7 @@ mod tests {
             notebook_id: Some("nb_xyz".into()),
             summary: Some("Day 1 plan".into()),
             star: 0,
+            user_id: "user_alice".into(),
             created_at: 1000,
             updated_at: 2000,
         };
@@ -45,6 +48,7 @@ mod tests {
         assert_eq!(restored.notebook_id, row.notebook_id);
         assert_eq!(restored.summary, row.summary);
         assert_eq!(restored.star, row.star);
+        assert_eq!(restored.user_id, row.user_id);
     }
 
     #[test]
@@ -56,6 +60,7 @@ mod tests {
             notebook_id: None,
             summary: None,
             star: 0,
+            user_id: "user_alice".into(),
             created_at: 100,
             updated_at: 100,
         };

@@ -19,8 +19,8 @@
 use std::collections::HashSet;
 use std::sync::{Arc, LazyLock, Mutex};
 
-use BadouWork_common::CommandSpec;
-use BadouWork_process::Spawner;
+use aionui_common::CommandSpec;
+use aionui_process::Spawner;
 
 use crate::event::{LocalizedText, NoticeLevel};
 
@@ -181,7 +181,7 @@ pub fn version_drift(cli: &str, reported: &str) -> Option<VersionDrift> {
 /// session.
 const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-async fn read_first_line(stdout: BadouWork_process::BoxedStdout) -> Option<String> {
+async fn read_first_line(stdout: aionui_process::BoxedStdout) -> Option<String> {
     use tokio::io::{AsyncBufReadExt, BufReader};
     let mut lines = BufReader::new(stdout).lines();
     while let Ok(Some(line)) = lines.next_line().await {

@@ -829,3 +829,111 @@ async fn csrf_exempts_requests_bearing_runtime_token_header() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
+
+#[tokio::test]
+async fn csrf_allows_a_request_that_carries_a_bearer_token() {
+    let cookie_config = Arc::new(CookieConfig {
+        secure: false,
+        same_site: "Lax",
+    });
+    let app = Router::new()
+        .route("/api/thing", post(|| async { "ok" }))
+        .layer(middleware::from_fn_with_state(cookie_config, csrf_middleware));
+
+    // A bearer token is never attached ambiently by a browser, so the
+    // double-submit check is skipped (token validity is enforced later by the
+    // auth middleware, which is not part of this app).
+    let resp = app
+        .oneshot(
+            Request::post("/api/thing")
+                .header(header::AUTHORIZATION, "Bearer some.jwt.token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn csrf_still_validates_a_request_that_carries_both_a_bearer_token_and_a_session_cookie() {
+    let cookie_config = Arc::new(CookieConfig {
+        secure: false,
+        same_site: "Lax",
+    });
+    let app = Router::new()
+        .route("/api/thing", post(|| async { "ok" }))
+        .layer(middleware::from_fn_with_state(cookie_config, csrf_middleware));
+
+    // A request that carries a session cookie is cookie-authenticated (the
+    // WebUI browser flow): the browser attaches that cookie automatically, so
+    // the double-submit check must still apply even when a bearer token is
+    // present as well.
+    let resp = app
+        .oneshot(
+            Request::post("/api/thing")
+                .header(header::AUTHORIZATION, "Bearer some.jwt.token")
+                .header(header::COOKIE, "aionui-session=some.session.cookie")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let json = json_body(resp).await;
+    assert_eq!(json["code"], "CSRF_INVALID");
+}
+
+#[tokio::test]
+async fn csrf_rejects_an_empty_bearer_token() {
+    let cookie_config = Arc::new(CookieConfig {
+        secure: false,
+        same_site: "Lax",
+    });
+    let app = Router::new()
+        .route("/api/thing", post(|| async { "ok" }))
+        .layer(middleware::from_fn_with_state(cookie_config, csrf_middleware));
+
+    // `Authorization: Bearer ` (trailing space, empty token) is not a bearer
+    // credential: the auth middleware treats it as absent and falls back to
+    // the session cookie, so the request must still pass the double-submit
+    // check.
+    let resp = app
+        .oneshot(
+            Request::post("/api/thing")
+                .header(header::AUTHORIZATION, "Bearer ")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let json = json_body(resp).await;
+    assert_eq!(json["code"], "CSRF_INVALID");
+}
+
+#[tokio::test]
+async fn csrf_rejects_a_lowercase_bearer_scheme() {
+    let cookie_config = Arc::new(CookieConfig {
+        secure: false,
+        same_site: "Lax",
+    });
+    let app = Router::new()
+        .route("/api/thing", post(|| async { "ok" }))
+        .layer(middleware::from_fn_with_state(cookie_config, csrf_middleware));
+
+    // Only the exact `Bearer ` scheme is recognised as a bearer credential;
+    // a lowercase `bearer ` is not, so the double-submit check still applies.
+    let resp = app
+        .oneshot(
+            Request::post("/api/thing")
+                .header(header::AUTHORIZATION, "bearer some.jwt.token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let json = json_body(resp).await;
+    assert_eq!(json["code"], "CSRF_INVALID");
+}

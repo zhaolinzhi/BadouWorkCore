@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Row mapping for the `notebooks` table.
 ///
-/// `name` is UNIQUE — enforced at the SQL level. Notes reference
+/// `(user_id, name)` is UNIQUE — enforced at the SQL level. Notes reference
 /// notebooks by `id`. Service-layer code validates the reference at
 /// write time (no SQL-level FK; see spec §2).
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -11,6 +11,8 @@ pub struct NotebookRow {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
+    /// Owning account. Every read and write is scoped by this column.
+    pub user_id: String,
     pub created_at: TimestampMs,
     pub updated_at: TimestampMs,
 }
@@ -25,6 +27,7 @@ mod tests {
             id: "nb_abc".into(),
             name: "Travel".into(),
             description: Some("Travel plans".into()),
+            user_id: "user_alice".into(),
             created_at: 1000,
             updated_at: 2000,
         };
@@ -33,6 +36,7 @@ mod tests {
         assert_eq!(restored.id, row.id);
         assert_eq!(restored.name, row.name);
         assert_eq!(restored.description, row.description);
+        assert_eq!(restored.user_id, row.user_id);
     }
 
     #[test]
@@ -41,6 +45,7 @@ mod tests {
             id: "nb_min".into(),
             name: "Inbox".into(),
             description: None,
+            user_id: "user_alice".into(),
             created_at: 100,
             updated_at: 100,
         };

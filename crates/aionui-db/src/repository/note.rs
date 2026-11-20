@@ -28,34 +28,42 @@ pub struct ListNotesFilter {
 }
 
 /// Data access abstraction for the `notes` table.
+///
+/// Every method that touches an existing row is scoped by the owning
+/// `user_id`: a row belonging to another account is invisible, and
+/// `update`/`delete` report `DbError::NotFound` for it.
 #[async_trait::async_trait]
 pub trait INoteRepository: Send + Sync {
     async fn insert(&self, row: &NoteRow) -> Result<(), DbError>;
 
     /// Update a note by ID. Touches `updated_at` automatically.
-    /// Returns `DbError::NotFound` if absent.
-    async fn update(&self, id: &str, params: &UpdateNoteParams) -> Result<(), DbError>;
+    /// Returns `DbError::NotFound` if absent or owned by another user.
+    async fn update(&self, id: &str, user_id: &str, params: &UpdateNoteParams) -> Result<(), DbError>;
 
-    /// Delete a note by ID. Returns `DbError::NotFound` if absent.
-    async fn delete(&self, id: &str) -> Result<(), DbError>;
+    /// Delete a note by ID. Returns `DbError::NotFound` if absent
+    /// or owned by another user.
+    async fn delete(&self, id: &str, user_id: &str) -> Result<(), DbError>;
 
-    async fn get_by_id(&self, id: &str) -> Result<Option<NoteRow>, DbError>;
+    /// Returns a single note by ID, or `None` if not found or owned by
+    /// another user.
+    async fn get_by_id(&self, id: &str, user_id: &str) -> Result<Option<NoteRow>, DbError>;
 
-    /// Filtered list ordered by `updated_at` DESC.
+    /// Filtered list of one account's notes, ordered by `updated_at` DESC.
     /// When `tag` is set, results are additionally restricted to notes
     /// that have that tag attached.
-    async fn list_filtered(&self, filter: &ListNotesFilter) -> Result<Vec<NoteRow>, DbError>;
+    async fn list_filtered(&self, filter: &ListNotesFilter, user_id: &str) -> Result<Vec<NoteRow>, DbError>;
 
     /// List notes whose `file_path` matches exactly. Used by sync.
-    async fn get_by_file_path(&self, file_path: &str) -> Result<Option<NoteRow>, DbError>;
+    /// `file_path` is only unique within one account's note set.
+    async fn get_by_file_path(&self, file_path: &str, user_id: &str) -> Result<Option<NoteRow>, DbError>;
 
     /// All notes for a given notebook id, ordered by `updated_at` DESC.
     /// Used by the `GET /api/notebooks/{id}/notes` endpoint.
-    async fn list_by_notebook(&self, notebook_id: &str) -> Result<Vec<NoteRow>, DbError>;
+    async fn list_by_notebook(&self, notebook_id: &str, user_id: &str) -> Result<Vec<NoteRow>, DbError>;
 
-    /// All notes with their file paths, used by sync to build the
-    /// `notes_on_disk` set.
-    async fn list_all_paths(&self) -> Result<Vec<(String, String, i64)>, DbError>;
+    /// All notes of one account with their file paths, used by sync to
+    /// build the `notes_on_disk` set.
+    async fn list_all_paths(&self, user_id: &str) -> Result<Vec<(String, String, i64)>, DbError>;
     // (id, file_path, updated_at)
 
     /// Upsert by `file_path`. Used by sync when ingesting a new file.

@@ -71,6 +71,10 @@ struct NoteListResponse {
 /// 构建 `notebook` 子路由，挂在 Axum Router 上。
 ///
 /// 路由前缀均为 `/api/...`，具体见 [`notebook_routes`] 中每条 `.route(...)`。
+///
+/// 正文按账号存放，因此读接口必须在读之前把该账号的工作区与数据库索引对齐；
+/// 这一步由 service 的读路径内部完成（`ensure_user_workspace_synced`），
+/// 同一个账号只对齐一次，路由本身不需要额外处理。
 pub fn notebook_routes(state: NotebookRouterState) -> Router {
     Router::new()
         // Notebooks
@@ -98,52 +102,52 @@ pub fn notebook_routes(state: NotebookRouterState) -> Router {
 /// `GET /api/notebooks` — 列出全部笔记本。
 async fn list_notebooks(
     State(state): State<NotebookRouterState>,
-    Extension(_user): Extension<CurrentUser>,
+    Extension(user): Extension<CurrentUser>,
 ) -> Result<Json<ApiResponse<NotebookListResponse>>, ApiError> {
-    let notebooks = state.service.list_notebooks().await?;
+    let notebooks = state.service.list_notebooks(&user.id).await?;
     Ok(Json(ApiResponse::ok(NotebookListResponse { notebooks })))
 }
 
 /// `POST /api/notebooks` — 创建笔记本。
 async fn create_notebook(
     State(state): State<NotebookRouterState>,
-    Extension(_user): Extension<CurrentUser>,
+    Extension(user): Extension<CurrentUser>,
     body: Result<ExtJson<CreateNotebookRequest>, JsonRejection>,
 ) -> Result<(StatusCode, Json<ApiResponse<NotebookResponse>>), ApiError> {
     let ExtJson(req) = body.map_err(ApiError::from)?;
-    let notebook = state.service.create_notebook(req).await?;
+    let notebook = state.service.create_notebook(req, &user.id).await?;
     Ok((StatusCode::CREATED, Json(ApiResponse::ok(notebook))))
 }
 
 /// `GET /api/notebooks/{id}` — 获取笔记本详情（含其下全部笔记）。
 async fn get_notebook(
     State(state): State<NotebookRouterState>,
-    Extension(_user): Extension<CurrentUser>,
+    Extension(user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<NotebookWithNotesResponse>>, ApiError> {
-    let (notebook, notes) = state.service.get_notebook_with_notes(&id).await?;
+    let (notebook, notes) = state.service.get_notebook_with_notes(&id, &user.id).await?;
     Ok(Json(ApiResponse::ok(NotebookWithNotesResponse { notebook, notes })))
 }
 
 /// `PUT /api/notebooks/{id}` — 更新笔记本元数据。
 async fn update_notebook(
     State(state): State<NotebookRouterState>,
-    Extension(_user): Extension<CurrentUser>,
+    Extension(user): Extension<CurrentUser>,
     Path(id): Path<String>,
     body: Result<ExtJson<UpdateNotebookRequest>, JsonRejection>,
 ) -> Result<Json<ApiResponse<NotebookResponse>>, ApiError> {
     let ExtJson(req) = body.map_err(ApiError::from)?;
-    let notebook = state.service.update_notebook(&id, req).await?;
+    let notebook = state.service.update_notebook(&id, req, &user.id).await?;
     Ok(Json(ApiResponse::ok(notebook)))
 }
 
 /// `DELETE /api/notebooks/{id}` — 删除笔记本。
 async fn delete_notebook(
     State(state): State<NotebookRouterState>,
-    Extension(_user): Extension<CurrentUser>,
+    Extension(user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    state.service.delete_notebook(&id).await?;
+    state.service.delete_notebook(&id, &user.id).await?;
     Ok(Json(ApiResponse::success()))
 }
 
@@ -152,32 +156,32 @@ async fn delete_notebook(
 /// `GET /api/notebooks/{id}/notes` — 列出指定笔记本下的全部笔记。
 async fn list_notes_by_notebook(
     State(state): State<NotebookRouterState>,
-    Extension(_user): Extension<CurrentUser>,
+    Extension(user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<NoteListResponse>>, ApiError> {
-    let notes = state.service.list_notes_by_notebook(&id).await?;
+    let notes = state.service.list_notes_by_notebook(&id, &user.id).await?;
     Ok(Json(ApiResponse::ok(NoteListResponse { notes })))
 }
 
 /// `POST /api/notebooks/{id}/notes` — 在指定笔记本下创建笔记。
 async fn create_note(
     State(state): State<NotebookRouterState>,
-    Extension(_user): Extension<CurrentUser>,
+    Extension(user): Extension<CurrentUser>,
     Path(id): Path<String>,
     body: Result<ExtJson<CreateNoteRequest>, JsonRejection>,
 ) -> Result<(StatusCode, Json<ApiResponse<NoteResponse>>), ApiError> {
     let ExtJson(req) = body.map_err(ApiError::from)?;
-    let note = state.service.create_note(&id, req).await?;
+    let note = state.service.create_note(&id, req, &user.id).await?;
     Ok((StatusCode::CREATED, Json(ApiResponse::ok(note))))
 }
 
 /// `GET /api/notes` — 按查询条件（`notebook_id`、`tag`、`starred`、`limit`、`offset`）列出笔记。
 async fn list_notes(
     State(state): State<NotebookRouterState>,
-    Extension(_user): Extension<CurrentUser>,
+    Extension(user): Extension<CurrentUser>,
     Query(query): Query<ListNotesQuery>,
 ) -> Result<Json<ApiResponse<NoteListResponse>>, ApiError> {
-    let notes = state.service.list_notes_filtered(&query).await?;
+    let notes = state.service.list_notes_filtered(&query, &user.id).await?;
     Ok(Json(ApiResponse::ok(NoteListResponse { notes })))
 }
 
@@ -185,22 +189,22 @@ async fn list_notes(
 /// 路径中的笔记本 id 会传入但被忽略（service 层实际以请求体为准）。
 async fn create_note_top(
     State(state): State<NotebookRouterState>,
-    Extension(_user): Extension<CurrentUser>,
+    Extension(user): Extension<CurrentUser>,
     body: Result<ExtJson<CreateNoteRequest>, JsonRejection>,
 ) -> Result<(StatusCode, Json<ApiResponse<NoteResponse>>), ApiError> {
     let ExtJson(req) = body.map_err(ApiError::from)?;
     // Notebook id path param is irrelevant; req.notebook takes precedence.
-    let note = state.service.create_note("", req).await?;
+    let note = state.service.create_note("", req, &user.id).await?;
     Ok((StatusCode::CREATED, Json(ApiResponse::ok(note))))
 }
 
 /// `GET /api/notes/{id}` — 获取笔记元数据（含标签）。
 async fn get_note(
     State(state): State<NotebookRouterState>,
-    Extension(_user): Extension<CurrentUser>,
+    Extension(user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<NoteResponse>>, ApiError> {
-    let note = state.service.get_note(&id).await?;
+    let note = state.service.get_note(&id, &user.id).await?;
     Ok(Json(ApiResponse::ok(note)))
 }
 
@@ -210,10 +214,10 @@ async fn get_note(
 /// 若磁盘文件缺失（自愈后），正文为空字符串。
 async fn get_note_raw(
     State(state): State<NotebookRouterState>,
-    Extension(_user): Extension<CurrentUser>,
+    Extension(user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<axum::response::Response, ApiError> {
-    let raw = state.service.get_note_raw(&id).await?;
+    let raw = state.service.get_note_raw(&id, &user.id).await?;
     Ok((
         StatusCode::OK,
         [(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")],
@@ -225,40 +229,40 @@ async fn get_note_raw(
 /// `PUT /api/notes/{id}` — 更新笔记。
 async fn update_note(
     State(state): State<NotebookRouterState>,
-    Extension(_user): Extension<CurrentUser>,
+    Extension(user): Extension<CurrentUser>,
     Path(id): Path<String>,
     body: Result<ExtJson<UpdateNoteRequest>, JsonRejection>,
 ) -> Result<Json<ApiResponse<NoteResponse>>, ApiError> {
     let ExtJson(req) = body.map_err(ApiError::from)?;
-    let note = state.service.update_note(&id, req).await?;
+    let note = state.service.update_note(&id, req, &user.id).await?;
     Ok(Json(ApiResponse::ok(note)))
 }
 
 /// `DELETE /api/notes/{id}` — 删除笔记。
 async fn delete_note(
     State(state): State<NotebookRouterState>,
-    Extension(_user): Extension<CurrentUser>,
+    Extension(user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
-    state.service.delete_note(&id).await?;
+    state.service.delete_note(&id, &user.id).await?;
     Ok(Json(ApiResponse::success()))
 }
 
 /// `POST /api/notes/{id}/star` — 切换笔记星标状态。
 async fn toggle_star(
     State(state): State<NotebookRouterState>,
-    Extension(_user): Extension<CurrentUser>,
+    Extension(user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<StarToggleResponse>>, ApiError> {
-    let resp = state.service.toggle_star(&id).await?;
+    let resp = state.service.toggle_star(&id, &user.id).await?;
     Ok(Json(ApiResponse::ok(resp)))
 }
 
 /// `GET /api/tags` — 列出全部标签及其被引用次数。
 async fn list_tags(
     State(state): State<NotebookRouterState>,
-    Extension(_user): Extension<CurrentUser>,
+    Extension(user): Extension<CurrentUser>,
 ) -> Result<Json<ApiResponse<TagsListResponse>>, ApiError> {
-    let tags = state.service.list_tags().await?;
+    let tags = state.service.list_tags(&user.id).await?;
     Ok(Json(ApiResponse::ok(tags)))
 }

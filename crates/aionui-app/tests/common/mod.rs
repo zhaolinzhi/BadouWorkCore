@@ -265,6 +265,28 @@ pub fn extract_csrf_token(resp: &axum::response::Response) -> Option<String> {
         })
 }
 
+/// Extract the `aionui-session` cookie value from a response's `Set-Cookie`.
+///
+/// `POST /login` returns both the session cookie and the bearer token, so a
+/// browser that logged in is cookie-authenticated: it carries the ambient
+/// session cookie on every later request even when it also sends the bearer
+/// token.
+pub fn extract_session_cookie(resp: &axum::response::Response) -> Option<String> {
+    resp.headers()
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .find(|s| s.starts_with("aionui-session="))
+        .map(|s| {
+            s.strip_prefix("aionui-session=")
+                .unwrap()
+                .split(';')
+                .next()
+                .unwrap()
+                .to_owned()
+        })
+}
+
 pub fn get_request(uri: &str) -> Request<Body> {
     Request::builder().method("GET").uri(uri).body(Body::empty()).unwrap()
 }
@@ -340,6 +362,51 @@ pub async fn setup_and_login(
     let token = json["token"].as_str().unwrap().to_owned();
 
     (token, csrf)
+}
+
+/// Log in and also hand back the `aionui-session` cookie the login response
+/// set.
+///
+/// `POST /login` returns the bearer token in the body *and* sets the session
+/// cookie. A browser keeps that cookie and sends it on every later request,
+/// so it is cookie-authenticated even when it also sends the bearer token.
+/// Tests that exercise the CSRF double-submit check need that ambient cookie
+/// to model the real WebUI browser flow.
+pub async fn setup_and_login_with_session_cookie(
+    app: &mut axum::Router,
+    services: &AppServices,
+    username: &str,
+    password: &str,
+) -> (String, String, String) {
+    let hash = aionui_auth::hash_password(password).unwrap();
+    if username == "admin" {
+        services
+            .user_repo
+            .set_system_user_credentials(username, &hash)
+            .await
+            .unwrap();
+    } else {
+        services.user_repo.create_user(username, &hash).await.unwrap();
+    }
+
+    let resp = app.clone().oneshot(get_request("/api/auth/status")).await.unwrap();
+    let csrf = extract_csrf_token(&resp).expect("CSRF cookie should be set");
+
+    let body = format!(r#"{{"username":"{username}","password":"{password}"}}"#);
+    let req = Request::builder()
+        .method("POST")
+        .uri("/login")
+        .header("content-type", "application/json")
+        .body(Body::from(body))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "login should succeed");
+
+    let session_cookie = extract_session_cookie(&resp).expect("login should set the session cookie");
+    let json = body_json(resp).await;
+    let token = json["token"].as_str().unwrap().to_owned();
+
+    (token, csrf, session_cookie)
 }
 
 /// Log in an account that already exists — for a second app instance brought up

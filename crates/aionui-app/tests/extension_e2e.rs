@@ -13,7 +13,7 @@ use aionui_extension::{ExtensionSource, ScanPath};
 
 use common::{
     body_json, build_app, build_app_with_skill_paths, get_with_token, json_with_token, setup_and_login,
-    sync_skill_catalog_for_test,
+    setup_and_login_with_session_cookie, sync_skill_catalog_for_test,
 };
 
 fn write_legacy_extension_fixture(tmp: &TempDir) -> std::path::PathBuf {
@@ -827,14 +827,19 @@ async fn extension_enablement_and_contributions_are_isolated_by_user() {
     let tmp = TempDir::new().unwrap();
     let ext_root = write_legacy_extension_fixture(&tmp);
     let (mut app, services) = build_app_with_extension_root(&ext_root).await;
-    let (token_a, csrf_a) = setup_and_login(&mut app, &services, "extension-user-a", "pass-a").await;
+    let (token_a, csrf_a, session_cookie_a) =
+        setup_and_login_with_session_cookie(&mut app, &services, "extension-user-a", "pass-a").await;
     let (token_b, csrf_b) = setup_and_login(&mut app, &services, "extension-user-b", "pass-b").await;
 
+    // Cookie-authenticated request: the browser attaches the ambient session
+    // cookie automatically, so the double-submit check still applies even
+    // though the client also sends the bearer token.
     let missing_csrf = Request::builder()
         .method("POST")
         .uri("/api/extensions/disable")
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token_a}"))
+        .header("cookie", format!("aionui-session={session_cookie_a}"))
         .body(Body::from(r#"{"name":"legacy-suite"}"#))
         .unwrap();
     let response = app.clone().oneshot(missing_csrf).await.unwrap();

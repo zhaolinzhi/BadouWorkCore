@@ -901,7 +901,7 @@ async fn external_user_provision_is_idempotent() {
 }
 
 #[tokio::test]
-async fn external_session_exchange_returns_cookie_without_json_token() {
+async fn external_session_exchange_returns_cookie_and_json_token() {
     let (app, _ctx) = test_app_with_options(false, Some("bootstrap-secret")).await;
 
     let provision = app
@@ -928,7 +928,9 @@ async fn external_session_exchange_returns_cookie_without_json_token() {
     assert!(session.headers().get(header::SET_COOKIE).is_some());
     let token = extract_session_token(&session).unwrap();
     let json = body_json(session).await;
-    assert!(json["data"].get("token").is_none());
+    // The token also travels in the body for clients that cannot read the
+    // HttpOnly cookie.
+    assert_eq!(json["data"]["token"], token);
     assert_eq!(json["data"]["user"]["username"], "Pro User");
 
     let user_resp = app.oneshot(get_with_token("/api/auth/user", &token)).await.unwrap();
@@ -993,7 +995,7 @@ async fn external_session_revoke_invalidates_existing_token() {
     let token = extract_session_token(&session).unwrap();
     let session_json = body_json(session).await;
     assert_eq!(session_json["data"]["session_generation"], 0);
-    assert!(session_json["data"].get("token").is_none());
+    assert!(session_json["data"].get("token").is_some());
 
     let revoke = app
         .clone()

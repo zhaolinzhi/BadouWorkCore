@@ -900,7 +900,7 @@ pub fn build_notebook_state(services: &AppServices) -> NotebookRouterState {
     let workspace_root = services.data_dir.join("notebooks");
     let workspace =
         Arc::new(WorkspaceConfig::resolve(&workspace_root).expect("notebook workspace must initialize under data_dir"));
-    let file_store = Arc::new(MdFileStore::new(workspace.notes_dir.clone()));
+    let file_store = Arc::new(MdFileStore::new(workspace_root.clone()));
     let pool = services.database.pool().clone();
     let notebook_repo: Arc<dyn aionui_db::INotebookRepository> =
         Arc::new(aionui_db::SqliteNotebookRepository::new(pool.clone()));

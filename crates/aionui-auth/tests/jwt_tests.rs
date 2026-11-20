@@ -4,6 +4,10 @@
 
 use aionui_auth::{AuthError, JwtService, resolve_jwt_secret};
 
+fn test_service() -> JwtService {
+    JwtService::new("test_secret_key_for_testing".into())
+}
+
 #[test]
 fn full_lifecycle_sign_verify_blacklist() {
     let service = JwtService::new("integration_test_secret".into());
@@ -69,4 +73,13 @@ fn resolve_secret_priority_order() {
     // Generated secrets are unique
     let (secret2, _) = resolve_jwt_secret(None, None);
     assert_ne!(secret, secret2);
+}
+
+#[tokio::test]
+async fn session_token_is_valid_for_seven_days() {
+    let service = test_service();
+    let token = service.sign_with_session_generation("user_1", "alice", 0).unwrap();
+    let payload = service.verify(&token).unwrap();
+    let lifetime = payload.exp - payload.iat;
+    assert_eq!(lifetime, 7 * 24 * 60 * 60, "session token must live for seven days");
 }
