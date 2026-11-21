@@ -61,12 +61,12 @@ aionui-assistant = { path = "crates/aionui-assistant" }
 aionui-app = { path = "crates/aionui-app" }
 aionui-notebook = { path = "crates/aionui-notebook" }
 
-aion-agent = { git = "https://github.com/zhaolinzhi/aionrs.git", tag = "v0.2.10-260908" }
-aion-providers = { git = "https://github.com/zhaolinzhi/aionrs.git", tag = "v0.2.10-260908" }
-aion-types = { git = "https://github.com/zhaolinzhi/aionrs.git", tag = "v0.2.10-260908" }
-aion-protocol = { git = "https://github.com/zhaolinzhi/aionrs.git", tag = "v0.2.10-260908" }
-aion-config = { git = "https://github.com/zhaolinzhi/aionrs.git", tag = "v0.2.10-260908" }
-aion-mcp = { git = "https://github.com/zhaolinzhi/aionrs.git", tag = "v0.2.10-260908" }
+aion-agent = { git = "https://github.com/zhaolinzhi/aionrs.git", tag = "v0.2.10-261121" }
+aion-providers = { git = "https://github.com/zhaolinzhi/aionrs.git", tag = "v0.2.10-261121" }
+aion-types = { git = "https://github.com/zhaolinzhi/aionrs.git", tag = "v0.2.10-261121" }
+aion-protocol = { git = "https://github.com/zhaolinzhi/aionrs.git", tag = "v0.2.10-261121" }
+aion-config = { git = "https://github.com/zhaolinzhi/aionrs.git", tag = "v0.2.10-261121" }
+aion-mcp = { git = "https://github.com/zhaolinzhi/aionrs.git", tag = "v0.2.10-261121" }
 
 #aion-agent = { path = "/Users/zhaolinzhi/Documents/workspaces/2026/aionui/aionrs/crates/aion-agent" }
 #aion-providers = { path = "/Users/zhaolinzhi/Documents/workspaces/2026/aionui/aionrs/crates/aion-providers" }
