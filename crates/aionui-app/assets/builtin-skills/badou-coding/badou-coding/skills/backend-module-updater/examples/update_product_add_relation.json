@@ -1,0 +1,19 @@
+{
+  "module": {
+    "code": "product",
+    "db_table": "t_product",
+    "name_cn": "商品"
+  },
+  "relations": [
+    {
+      "field_name": "product_id",
+      "related_module": {"code": "category"},
+      "related_table": "t_category",
+      "related_field": "id",
+      "type": 2,
+      "show_type": "tab",
+      "display_name": "商品分类",
+      "_action": "add"
+    }
+  ]
+}

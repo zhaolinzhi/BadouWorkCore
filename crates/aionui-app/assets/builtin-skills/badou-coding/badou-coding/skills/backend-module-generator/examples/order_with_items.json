@@ -1,0 +1,123 @@
+{
+  "module": {
+    "name_cn": "订单管理",
+    "code": "order",
+    "db_table": "t_order"
+  },
+  "menu": {
+    "parent_code": "FRONT-XTGL",
+    "name": "订单管理"
+  },
+  "dictionaries": [
+    {
+      "type_name": "order_status",
+      "name": "订单状态",
+      "items": [
+        {"code": "0", "value": "0", "name": "待付款", "priority": 1},
+        {"code": "1", "value": "1", "name": "已付款", "priority": 2},
+        {"code": "2", "value": "2", "name": "已发货", "priority": 3},
+        {"code": "3", "value": "3", "name": "已完成", "priority": 4},
+        {"code": "4", "value": "4", "name": "已取消", "priority": 5}
+      ]
+    }
+  ],
+  "fields": [
+    {
+      "field_name": "order_no",
+      "display_type": "varchar",
+      "comment": "订单编号",
+      "length": 50,
+      "nullable": true,
+      "form": {
+        "searchable": true,
+        "editable": false,
+        "show_in_grid": true
+      }
+    },
+    {
+      "field_name": "customer_id",
+      "display_type": "varchar",
+      "comment": "客户ID",
+      "length": 64,
+      "nullable": false,
+      "form": {
+        "searchable": true,
+        "editable": true,
+        "show_in_grid": true
+      }
+    },
+    {
+      "field_name": "total_amount",
+      "display_type": "decimal",
+      "comment": "订单金额",
+      "length": 10,
+      "nullable": false,
+      "form": {
+        "searchable": true,
+        "editable": true,
+        "show_in_grid": true
+      }
+    },
+    {
+      "field_name": "status",
+      "display_type": "varchar",
+      "comment": "状态",
+      "length": 2,
+      "nullable": false,
+      "default_value": "0",
+      "dict": "order_status",
+      "form": {
+        "searchable": true,
+        "editable": true,
+        "show_in_grid": true,
+        "edit_type": "select"
+      }
+    },
+    {
+      "field_name": "remark",
+      "display_type": "varchar",
+      "comment": "备注",
+      "length": 500,
+      "nullable": true,
+      "form": {
+        "searchable": false,
+        "editable": true,
+        "show_in_grid": false
+      }
+    }
+  ],
+  "relations": [
+    {
+      "type": 1,
+      "related_module": "customer",
+      "field_name": "customer_id",
+      "related_field_name": "name",
+      "display_name": "客户名称",
+      "edit_module": 0,
+      "is_cascade": 0,
+      "show_style": 1,
+      "tab_name": "客户信息"
+    },
+    {
+      "type": 2,
+      "related_module": "order_item",
+      "related_field_name": "order_id",
+      "display_name": "订单明细",
+      "edit_module": 0,
+      "is_cascade": 1,
+      "show_style": 2,
+      "tab_name": "明细"
+    },
+    {
+      "type": 2,
+      "related_module": "order_log",
+      "related_field_name": "order_id",
+      "display_name": "操作日志",
+      "edit_module": 0,
+      "is_cascade": 0,
+      "show_style": 3,
+      "tab_name": null
+    }
+  ],
+  "version": "1.0.0"
+}

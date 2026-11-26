@@ -1,0 +1,4 @@
+# Ignore runtime credential files in this directory.
+# The actual db_config.json contains plaintext dev credentials and must
+# not be committed.
+db_config.json

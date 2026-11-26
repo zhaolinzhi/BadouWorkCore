@@ -1,0 +1,11 @@
+{
+  "project": {
+    "name": "八斗科技后台管理系统",
+    "package_name": "com.badou.entity"
+  },
+  "system": {
+    "data_source_code": "241init",
+    "creator_id": "U00001",
+    "creator_name": "系统管理员"
+  }
+}

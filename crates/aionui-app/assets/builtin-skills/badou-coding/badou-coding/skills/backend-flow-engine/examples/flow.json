@@ -1,0 +1,52 @@
+{
+  "code": "LEAVE_APPROVAL",
+  "flow_name": "请假审批流程",
+  "memo": "员工请假申请审批流程：提交申请 → 部门经理审批 → 人事审批 → 结束",
+  "org_id": "ROOT",
+  "busi": {
+    "code": "LEAVE_BUSI",
+    "name": "请假业务",
+    "module_code": "leave_request",
+    "instance_class": "com.badou.designer.module.design.base.ModuleEntityFlowWithNodeCode"
+  },
+  "nodes": [
+    {
+      "code": "START",
+      "node_name": "提交申请",
+      "flg_head": 1,
+      "handle_way": 1,
+      "handler": { "type": 1, "value": "1!@!拟稿人/填报人!@!3", "text": "拟稿人/填报人" },
+      "routes": [
+        { "code": "SUBMIT", "menu_name": "提交", "flg_attribute": "GOAHEAD", "target_node": "REVIEW_01", "priority": 0, "iz_need_opinion": 0 }
+      ]
+    },
+    {
+      "code": "REVIEW_01",
+      "node_name": "部门经理审批",
+      "handle_way": 1,
+      "handler": { "type": 40, "value": "40!@!部门负责人!@!root_org_id", "text": "部门负责人" },
+      "routes": [
+        { "code": "APPROVE", "menu_name": "通过", "flg_attribute": "GOAHEAD", "target_node": "REVIEW_02", "priority": 0, "iz_need_opinion": 1 },
+        { "code": "REJECT", "menu_name": "驳回", "flg_attribute": "BACK", "target_node": "START", "priority": 1, "iz_need_opinion": 1 }
+      ]
+    },
+    {
+      "code": "REVIEW_02",
+      "node_name": "人事审批",
+      "handle_way": 1,
+      "handler": { "type": 20, "value": "20!@!超级管理员!@!U00001", "text": "超级管理员" },
+      "routes": [
+        { "code": "APPROVE_FINAL", "menu_name": "通过", "flg_attribute": "GOAHEAD", "target_node": "end", "priority": 0, "iz_need_opinion": 1 },
+        { "code": "REJECT_TO_MGR", "menu_name": "退回", "flg_attribute": "BACK", "target_node": "REVIEW_01", "priority": 1, "iz_need_opinion": 1 }
+      ]
+    },
+    {
+      "code": "end",
+      "node_name": "结束",
+      "flg_root": 1,
+      "handle_way": 1,
+      "handler": { "type": 20, "value": "20!@!超级管理员!@!U00001", "text": "超级管理员" },
+      "routes": []
+    }
+  ]
+}

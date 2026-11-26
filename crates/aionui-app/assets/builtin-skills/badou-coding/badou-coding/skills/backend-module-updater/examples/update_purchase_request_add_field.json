@@ -1,0 +1,25 @@
+{
+  "module": {
+    "code": "purchase_request",
+    "db_table": "t_purchase_request",
+    "name_cn": "采购申请"
+  },
+  "fields": [
+    {
+      "field_name": "supplier_phone",
+      "display_type": "varchar",
+      "length": 20,
+      "comment": "供应商联系电话",
+      "nullable": true,
+      "_action": "add"
+    },
+    {
+      "field_name": "description",
+      "display_type": "varchar",
+      "length": 200,
+      "comment": "申请说明",
+      "nullable": true,
+      "_action": "modify"
+    }
+  ]
+}

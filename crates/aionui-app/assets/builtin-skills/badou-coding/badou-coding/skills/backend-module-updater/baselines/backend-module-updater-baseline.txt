@@ -1,0 +1,3 @@
+PASSED: examples/update_purchase_request_add_field.json | lines=3
+PASSED: examples/update_product_add_relation.json | lines=1
+PASSED: examples/update_server_rack_add_flow.json | lines=1

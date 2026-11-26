@@ -1,0 +1,10 @@
+{
+  "module": {
+    "code": "server_rack",
+    "db_table": "t_server_rack",
+    "name_cn": "机柜管理",
+    "flow_code": "SERVER_RACK_APPROVAL",
+    "flow_business_name_field": "rack_name",
+    "_action": "add_flow"
+  }
+}
