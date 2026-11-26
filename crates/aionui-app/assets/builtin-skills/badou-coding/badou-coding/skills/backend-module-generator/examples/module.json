@@ -1,0 +1,143 @@
+{
+  "module": {
+    "code": "leave_request",
+    "name_cn": "请假管理",
+    "db_table": "t_leave_request",
+    "package_name": "com.badou.entity",
+    "data_source_code": "projectDatabase"
+  },
+  "fields": [
+    {
+      "field_name": "applicant_id",
+      "display_type": "varchar",
+      "comment": "申请人ID",
+      "nullable": true,
+      "length": 64,
+      "form": {
+        "edit_type": "hidden",
+        "editable": false,
+        "show_in_grid": false
+      }
+    },
+    {
+      "field_name": "applicant_name",
+      "display_type": "varchar",
+      "comment": "申请人姓名",
+      "nullable": true,
+      "length": 50,
+      "form": {
+        "searchable": true,
+        "editable": false
+      }
+    },
+    {
+      "field_name": "leave_type",
+      "display_type": "varchar",
+      "comment": "请假类型",
+      "nullable": false,
+      "length": 20,
+      "dict": "leave_type",
+      "form": {
+        "searchable": true
+      }
+    },
+    {
+      "field_name": "start_date",
+      "display_type": "date",
+      "comment": "开始日期",
+      "nullable": false,
+      "form": {
+        "searchable": true
+      }
+    },
+    {
+      "field_name": "end_date",
+      "display_type": "date",
+      "comment": "结束日期",
+      "nullable": false,
+      "form": {
+        "searchable": true
+      }
+    },
+    {
+      "field_name": "duration",
+      "display_type": "decimal",
+      "comment": "请假天数",
+      "nullable": false,
+      "length": 5
+    },
+    {
+      "field_name": "reason",
+      "display_type": "text",
+      "comment": "请假原因",
+      "nullable": false
+    },
+    {
+      "field_name": "contact_phone",
+      "display_type": "varchar",
+      "comment": "联系电话",
+      "nullable": true,
+      "length": 20
+    }
+  ],
+  "dictionaries": [
+    {
+      "type_name": "leave_type",
+      "name": "请假类型",
+      "items": [
+        {
+          "code": "1",
+          "value": "1",
+          "name": "事假",
+          "priority": 1
+        },
+        {
+          "code": "2",
+          "value": "2",
+          "name": "病假",
+          "priority": 2
+        },
+        {
+          "code": "3",
+          "value": "3",
+          "name": "年假",
+          "priority": 3
+        },
+        {
+          "code": "4",
+          "value": "4",
+          "name": "婚假",
+          "priority": 4
+        },
+        {
+          "code": "5",
+          "value": "5",
+          "name": "产假",
+          "priority": 5
+        },
+        {
+          "code": "6",
+          "value": "6",
+          "name": "调休",
+          "priority": 6
+        },
+        {
+          "code": "7",
+          "value": "7",
+          "name": "其他",
+          "priority": 7
+        }
+      ]
+    }
+  ],
+  "menu": {
+    "resource_code": "LEAVE_REQUEST",
+    "parent_code": "FRONT-XTGL",
+    "parent_name": "系统管理",
+    "level_id": "1.5",
+    "priority": 6
+  },
+  "version": "3.1.0",
+  "flow_code": "LEAVE_APPROVAL",
+  "flow_business_name_field": "applicant_name"
+}

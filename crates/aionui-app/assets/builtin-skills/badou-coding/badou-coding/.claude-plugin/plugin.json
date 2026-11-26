@@ -1,0 +1,5 @@
+{
+  "name": "badou-coding",
+  "description": "八斗企业版 superpowers 套件 — 在 Claude Code 中暴露为 /badou-coding@skills-dir:* 命名空间；融合企业内部规则",
+  "version": "1.0.0"
+}

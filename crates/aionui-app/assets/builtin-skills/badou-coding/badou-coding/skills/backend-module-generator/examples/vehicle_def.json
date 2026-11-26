@@ -1,0 +1,161 @@
+{
+  "module": {
+    "module_name": "车辆信息管理",
+    "name_cn": "车辆信息管理",
+    "code": "vehicle",
+    "db_table": "t_vehicle",
+    "table_name_cn": "车辆信息表",
+    "package_name": "com.badou.entity",
+    "data_source_code": "projectDatabase"
+  },
+  "menu": {
+    "parent_code": "FRONT-XTGL",
+    "parent_name": "系统管理",
+    "level_id": "1.4",
+    "priority": 4
+  },
+  "fields": [
+    {
+      "field_name": "vehicle_plate",
+      "display_type": "varchar",
+      "comment": "车牌号",
+      "nullable": false,
+      "length": 20,
+      "form": {
+        "searchable": true,
+        "edit_tip": "请输入车牌号，例如：京A12345",
+        "regex_rule": "required"
+      }
+    },
+    {
+      "field_name": "vehicle_brand",
+      "display_type": "varchar",
+      "comment": "品牌",
+      "nullable": false,
+      "dict": "vehicle_brand",
+      "form": {
+        "searchable": true,
+        "regex_rule": "required"
+      }
+    },
+    {
+      "field_name": "vehicle_model",
+      "display_type": "varchar",
+      "comment": "型号",
+      "nullable": true,
+      "length": 50,
+      "form": {
+        "searchable": true
+      }
+    },
+    {
+      "field_name": "vehicle_color",
+      "display_type": "varchar",
+      "comment": "颜色",
+      "nullable": true,
+      "dict": "vehicle_color",
+      "form": {
+        "searchable": true
+      }
+    },
+    {
+      "field_name": "vehicle_type",
+      "display_type": "int",
+      "comment": "车辆类型",
+      "nullable": false,
+      "dict": "vehicle_type",
+      "form": {
+        "searchable": true,
+        "regex_rule": "required"
+      }
+    },
+    {
+      "field_name": "purchase_date",
+      "display_type": "date",
+      "comment": "购买日期",
+      "nullable": true,
+      "form": {
+        "searchable": true
+      }
+    },
+    {
+      "field_name": "mileage",
+      "display_type": "decimal",
+      "comment": "行驶里程(km)",
+      "nullable": true,
+      "length": 12,
+      "form": {
+        "regex_rule": "decimal"
+      }
+    },
+    {
+      "field_name": "status",
+      "display_type": "int",
+      "comment": "状态",
+      "nullable": false,
+      "default_value": "1",
+      "dict": "vehicle_status",
+      "form": {
+        "searchable": true,
+        "regex_rule": "required"
+      }
+    },
+    {
+      "field_name": "remark",
+      "display_type": "text",
+      "comment": "备注",
+      "nullable": true,
+      "form": {}
+    }
+  ],
+  "dictionaries": [
+    {
+      "type_name": "vehicle_brand",
+      "name": "车辆品牌",
+      "items": [
+        { "code": "1", "value": "1", "name": "大众", "priority": 1 },
+        { "code": "2", "value": "2", "name": "丰田", "priority": 2 },
+        { "code": "3", "value": "3", "name": "比亚迪", "priority": 3 },
+        { "code": "4", "value": "4", "name": "特斯拉", "priority": 4 },
+        { "code": "5", "value": "5", "name": "宝马", "priority": 5 },
+        { "code": "6", "value": "6", "name": "奔驰", "priority": 6 },
+        { "code": "7", "value": "7", "name": "奥迪", "priority": 7 },
+        { "code": "8", "value": "8", "name": "其他", "priority": 8 }
+      ]
+    },
+    {
+      "type_name": "vehicle_color",
+      "name": "车辆颜色",
+      "items": [
+        { "code": "1", "value": "1", "name": "黑色", "priority": 1 },
+        { "code": "2", "value": "2", "name": "白色", "priority": 2 },
+        { "code": "3", "value": "3", "name": "银色", "priority": 3 },
+        { "code": "4", "value": "4", "name": "灰色", "priority": 4 },
+        { "code": "5", "value": "5", "name": "蓝色", "priority": 5 },
+        { "code": "6", "value": "6", "name": "红色", "priority": 6 },
+        { "code": "7", "value": "7", "name": "其他", "priority": 7 }
+      ]
+    },
+    {
+      "type_name": "vehicle_type",
+      "name": "车辆类型",
+      "items": [
+        { "code": "1", "value": "1", "name": "轿车", "priority": 1 },
+        { "code": "2", "value": "2", "name": "SUV", "priority": 2 },
+        { "code": "3", "value": "3", "name": "货车", "priority": 3 },
+        { "code": "4", "value": "4", "name": "客车", "priority": 4 },
+        { "code": "5", "value": "5", "name": "摩托车", "priority": 5 }
+      ]
+    },
+    {
+      "type_name": "vehicle_status",
+      "name": "车辆状态",
+      "items": [
+        { "code": "1", "value": "1", "name": "可用", "priority": 1 },
+        { "code": "2", "value": "2", "name": "维修中", "priority": 2 },
+        { "code": "3", "value": "3", "name": "报废", "priority": 3 }
+      ]
+    }
+  ],
+  "version": "1.1.0"
+}

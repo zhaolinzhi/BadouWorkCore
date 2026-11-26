@@ -1,0 +1,5 @@
+# Ignore runtime credential files in this directory.
+# Templates (db_config.env, crud-config.example.json) are committed.
+# The actual db_config.json contains plaintext dev credentials and must
+# not be committed.
+db_config.json
